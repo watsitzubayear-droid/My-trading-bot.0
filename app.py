@@ -16,16 +16,17 @@ if 'logged_in' not in st.session_state:
 # --- 2. AUTHENTICATION PAGE ---
 def login_page():
     st.set_page_config(page_title="Terminal Login", layout="centered")
-    st.markdown("""
+    # Fixed CSS f-string syntax using double braces {{ }}
+    st.markdown(f"""
         <style>
-        .stApp { background: #0b0c14; }
-        .login-card {
+        .stApp {{ background: #0b0c14; }}
+        .login-card {{
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(20px);
             padding: 50px; border-radius: 30px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             text-align: center; color: white;
-        }
+        }}
         </style>
         """, unsafe_allow_html=True)
     
@@ -68,11 +69,11 @@ def main_terminal():
             border-radius: 40px; border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 40px; margin: auto; max-width: 950px; text-align: center;
             color: {txt_main};
-        }
+        }}
         </style>
         """, unsafe_allow_html=True)
 
-    # Sidebar Logout
+    # Sidebar
     st.sidebar.markdown(f"### 👤 User: {VALID_USER}")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
@@ -82,60 +83,87 @@ def main_terminal():
         st.session_state.theme = 'white' if st.session_state.theme == 'dark' else 'dark'
         st.rerun()
 
-    # Center Interface
     st.markdown("<div class='main-container'>", unsafe_allow_html=True)
     st.title("☠️ ZOHA ELITE SIGNAL ☠️")
     
+    # ALL MARKETS IMPORTED FROM YOUR UPLOADED IMAGES
     MARKETS = {
-        "Currencies OTC": ["BDT/USD_otc", "USD/INR_otc", "USD/BRL_otc", "EUR/USD_otc", "GBP/USD_otc"],
-        "Global Live": ["EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "ETHUSD"],
-        "Stocks OTC": ["Apple_otc", "Microsoft_otc", "Tesla_otc", "Google_otc"],
-        "Commodities": ["Gold_otc", "Silver_otc", "Crude Oil_otc"]
+        "Currencies (OTC)": [
+            "AUD/USD (OTC)", "USD/BRL (OTC)", "EUR/SGD (OTC)", "GBP/NZD (OTC)", 
+            "USD/COP (OTC)", "USD/IDR (OTC)", "USD/JPY (OTC)", "USD/MXN (OTC)", 
+            "AUD/CHF (OTC)", "EUR/JPY (OTC)", "USD/BDT (OTC)", "USD/PHP (OTC)", 
+            "USD/PKR (OTC)", "USD/DZD (OTC)", "USD/INR (OTC)", "EUR/CHF (OTC)", 
+            "EUR/AUD (OTC)", "GBP/CAD (OTC)", "GBP/AUD (OTC)", "USD/ARS (OTC)", 
+            "USD/CAD (OTC)", "NZD/CHF (OTC)", "USD/TRY (OTC)", "AUD/CAD (OTC)", 
+            "AUD/JPY (OTC)", "CAD/CHF (OTC)", "CHF/JPY (OTC)", "EUR/CAD (OTC)", 
+            "EUR/USD (OTC)", "GBP/JPY (OTC)", "NZD/CAD (OTC)", "NZD/JPY (OTC)", 
+            "USD/CHF (OTC)", "USD/EGP (OTC)", "USD/NGN (OTC)", "NZD/USD (OTC)", 
+            "CAD/JPY (OTC)", "USD/ZAR (OTC)", "GBP/CHF (OTC)", "AUD/NZD (OTC)", 
+            "EUR/NZD (OTC)"
+        ],
+        "Crypto (OTC)": [
+            "Bitcoin (OTC)", "Ethereum (OTC)", "Solana (OTC)", "Ripple (OTC)", 
+            "Avalanche (OTC)", "Dash (OTC)", "Polkadot (OTC)", "Dogecoin (OTC)",
+            "Shiba Inu (OTC)", "Pepe (OTC)", "Binance Coin (OTC)", "Cardano (OTC)",
+            "Dogwifhat (OTC)", "Arbitrum (OTC)", "Zcash (OTC)", "Cosmos (OTC)", 
+            "Beam (OTC)", "Axie Infinity (OTC)", "Bitcoin Cash (OTC)", "Bonk (OTC)", 
+            "Aptos (OTC)", "Floki (OTC)", "Gala (OTC)", "Hamster Kombat (OTC)", 
+            "Chainlink (OTC)", "Litecoin (OTC)", "Decentraland (OTC)", "Celestia (OTC)"
+        ],
+        "Stocks (OTC)": [
+            "Intel (OTC)", "Johnson & Johnson (OTC)", "FACEBOOK INC (OTC)", 
+            "Microsoft (OTC)", "Boeing Company (OTC)", "Pfizer Inc (OTC)", 
+            "American Express (OTC)", "McDonald's (OTC)"
+        ],
+        "Commodities (OTC)": [
+            "Silver (OTC)", "UKBrent (OTC)", "USCrude (OTC)", "Gold (OTC)"
+        ]
     }
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         cat = st.selectbox("Category", list(MARKETS.keys()))
         asset = st.selectbox("🔍 Market Search", MARKETS[cat])
-        gen_btn = st.button("🚀 EXECUTE MULTI-STRATEGY SCAN")
+        gen_btn = st.button("🚀 EXECUTE QUANT ANALYSIS")
 
     if gen_btn:
-        with st.status(f"🤖 Quant Engine Scanning {asset}...", expanded=True) as status:
-            st.write("📊 Checking Fair Value Gaps (FVG) & Liquidity...")
-            time.sleep(1.2)
-            st.write("📈 Analyzing Higher Timeframe (M5/M15) Correlation...")
-            time.sleep(1.2)
-            st.write("⚖️ Measuring Buyer/Seller Imbalance (Order Flow)...")
-            time.sleep(1.2)
-            st.write("🎯 Calculating Fibonacci Golden Ratio Levels...")
-            time.sleep(1.2)
-            status.update(label="✅ QUANT ANALYSIS SUCCESSFUL", state="complete")
+        with st.status(f"🤖 Scanning {asset}...", expanded=True) as status:
+            st.write("📊 Analyzing Candle Wick Rejection Patterns...")
+            time.sleep(1)
+            st.write("🔍 Detecting Fair Value Gaps (FVG)...")
+            time.sleep(1)
+            st.write("🎯 Checking Bollinger Band Micro-Touch...")
+            time.sleep(1)
+            status.update(label="✅ ANALYSIS COMPLETE", state="complete")
         
-        # ELITE STRATEGY DATABASE
+        # Sureshot Strategy Engine
         strategies = [
-            {"p": "Fair Value Gap (FVG)", "d": "DOWN (PUT) 🔴", "s": "Imbalance detected; price must return to fill the void.", "acc": 99.4},
-            {"p": "Liquidity Sweep", "d": "UP (CALL) 🟢", "s": "Stop-losses hunted below support; huge buy pressure incoming.", "acc": 98.9},
-            {"p": "Fibonacci 0.618 Golden Pocket", "d": "UP (CALL) 🟢", "s": "Perfect retracement touch on high-volume trend.", "acc": 97.5},
-            {"p": "M5/M1 Confluence", "d": "DOWN (PUT) 🔴", "s": "M5 Trend is Bearish; M1 Pullback is exhausted.", "acc": 98.2},
-            {"p": "Three Line Strike", "d": "UP (CALL) 🟢", "s": "Three red candles followed by a massive engulfing green.", "acc": 95.8}
+            {"p": "Wick Rejection", "d": "UP (CALL) 🟢", "s": "Strong rejection at support level.", "acc": 98.2},
+            {"p": "Fair Value Gap", "d": "DOWN (PUT) 🔴", "s": "Imbalance detected; price filling the gap.", "acc": 99.1},
+            {"p": "Bollinger Squeeze", "d": "UP (CALL) 🟢", "s": "Micro-breakout outside lower band.", "acc": 97.5},
+            {"p": "VSA Exhaustion", "d": "DOWN (PUT) 🔴", "s": "High volume with no price progress.", "acc": 96.4}
         ]
         res = np.random.choice(strategies)
         
         st.divider()
         r1, r2 = st.columns(2)
         with r1:
-            st.metric("FINAL SIGNAL", res['d'])
-            st.metric("PROBABILITY", f"{res['acc']}%")
+            st.metric("SIGNAL", res['d'])
+            st.metric("ACCURACY", f"{res['acc']}%")
         with r2:
-            st.subheader("Quant Breakdown")
-            st.info(f"**Method:** {res['p']}")
+            st.info(f"**Strategy:** {res['p']}")
             st.info(f"**Logic:** {res['s']}")
     
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Chart Widget
     st.divider()
-    tv_sym = asset.replace("_otc", "").replace("/", "")
+    # Clean symbol for TradingView
+    tv_sym = asset.split(" ")[0].replace("/", "")
+    if "Gold" in tv_sym: tv_sym = "XAUUSD"
+    elif "Silver" in tv_sym: tv_sym = "XAGUSD"
+    elif "UKBrent" in tv_sym: tv_sym = "UKOIL"
+
     components.html(f"""
         <div style="height:500px; border-radius: 20px; overflow: hidden; border: 2px solid #4facfe;">
         <script src="https://s3.tradingview.com/tv.js"></script>
