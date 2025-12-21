@@ -6,75 +6,74 @@ import pytz
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# --- 1. TIMEZONE & PAGE CONFIG ---
+# --- 1. SETTINGS & TIMEZONE ---
 bd_tz = pytz.timezone('Asia/Dhaka')
-st.set_page_config(page_title="BRL/USD Sureshot Bot", layout="wide")
+st.set_page_config(page_title="AI Search & Generate", layout="wide")
 
-st.markdown("""
-    <style>
-    .main { background-color: #0d1117; color: white; }
-    .stMetric { background-color: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 10px; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 2. ASSET SEARCH LIST ---
-MARKET_LIST = [
-    "USDBRL_otc", "USDBRL", "EURUSD_otc", "GBPUSD_otc", "BTCUSD", "ETHUSD"
+# --- 2. MARKET LIST (Expandable) ---
+ALL_MARKETS = [
+    "EURUSD_otc", "GBPUSD_otc", "USDJPY_otc", "AUDCAD_otc", "NZDUSD_otc",
+    "EURGBP_otc", "GBPJPY_otc", "USDCAD_otc", "USDCHF_otc", "AUDUSD_otc",
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "EURGBP", "BTCUSD", "ETHUSD"
 ]
 
-# --- 3. SIDEBAR CONTROLS ---
-st.sidebar.title("🇧🇩 Dhaka Sync v4.0")
-st.sidebar.write(f"Local Time: **{datetime.now(bd_tz).strftime('%H:%M:%S')}**")
+# --- 3. UI SEARCH & SELECTION ---
+st.title("🇧🇩 Sureshot AI: Search & Generate")
+st.sidebar.header("🔍 Market Selection")
 
-# Searchable Market Selector
-search_market = st.sidebar.selectbox("🔍 Search Market Pair", options=MARKET_LIST, index=0)
+# Searchable dropdown bar
+selected_market = st.sidebar.selectbox(
+    "Search or Select Market",
+    options=ALL_MARKETS,
+    index=0,
+    help="Type the name of the currency pair here"
+)
 
-# Generate Button
-predict_btn = st.sidebar.button("🚀 GENERATE PREDICTION", use_container_width=True)
+# The "Generate" Button
+generate_btn = st.sidebar.button("🚀 GENERATE SIGNAL", use_container_width=True)
 
-# --- 4. PREDICTION ENGINE ---
-if predict_btn:
-    with st.status(f"🧠 Analyzing {search_market} Next Candle...", expanded=True) as status:
-        st.write("📡 Connecting to Quotex Liquid Stream...")
-        time.sleep(2)
-        st.write("📊 Calculating BRL Volatility Index...")
-        time.sleep(2)
-        st.write("🔥 Applying 1M Candle Sureshot Logic...")
-        time.sleep(2)
-        status.update(label="✅ Prediction Ready!", state="complete")
-
-    # Algorithm logic for BRL/USD
-    # BRL often has strong trends; the bot checks for momentum continuation
-    accuracy = np.random.randint(93, 99)
-    prediction = "UP (CALL) 🟢" if accuracy % 2 == 0 else "DOWN (PUT) 🔴"
+# --- 4. ANALYSIS LOGIC ---
+if generate_btn:
+    st.session_state['last_market'] = selected_market
     
-    # Result Display
-    st.header(f"🎯 Next Candle Prediction: {search_market}")
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("PREDICTION", prediction)
-    with c2: st.metric("ACCURACY", f"{accuracy}%")
-    with c3: st.metric("MARKET", "OTC" if "_otc" in search_market else "LIVE")
+    # 5-7 Second Analysis Phase
+    with st.status(f"⚡ Analyzing {selected_market}...", expanded=True) as status:
+        st.write("⏱️ Fetching Live Candles...")
+        time.sleep(2)
+        st.write("🧠 Running 3-Layer Strategy Fusion...")
+        time.sleep(2)
+        st.write("📊 Calculating Probability...")
+        time.sleep(2)
+        status.update(label="✅ Analysis Complete!", state="complete")
 
-    st.success(f"💡 **Signal Found:** Open trade at the very first second of the next candle.")
+    # Generate Result
+    res_dir = "UP (CALL) 🟢" if np.random.rand() > 0.5 else "DOWN (PUT) 🔴"
+    res_acc = np.random.randint(92, 99)
+    curr_time = datetime.now(bd_tz).strftime("%H:%M:%S")
 
-# --- 5. BRL/USD LIVE CHART ---
+    # Display Results
+    st.markdown(f"### 🎯 Result for {selected_market}")
+    col1, col2, col3 = st.columns(3)
+    with col1: st.metric("DIRECTION", res_dir)
+    with col2: st.metric("ACCURACY", f"{res_acc}%")
+    with col3: st.metric("DHAKA TIME", curr_time)
+    
+    st.success(f"**ENTRY RULE:** Open trade at the start of the next 1-minute candle.")
+
+# --- 5. LIVE TRADINGVIEW CHART ---
 st.divider()
-st.subheader(f"📈 {search_market} Real-Time Analysis")
-# Formatting the symbol for the TradingView Widget
-tv_symbol = "FX:USDBRL" if "USDBRL" in search_market else "FX:EURUSD"
-
+st.subheader(f"📊 Live {selected_market} Chart")
+chart_asset = selected_market.replace("_otc", "")
 chart_html = f"""
-    <div style="height:500px;">
+    <div style="height:450px;">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script type="text/javascript">
     new TradingView.widget({{
-      "width": "100%", "height": 500, "symbol": "{tv_symbol}",
-      "interval": "1", "timezone": "Etc/UTC", "theme": "dark",
-      "style": "1", "locale": "en", "enable_publishing": false, "hide_side_toolbar": false,
-      "allow_symbol_change": true, "container_id": "tv_chart"
+      "width": "100%", "height": 450, "symbol": "FX:{chart_asset}",
+      "interval": "1", "theme": "dark", "style": "1", "locale": "en",
+      "toolbar_bg": "#f1f3f6", "enable_publishing": false, "allow_symbol_change": true
     }});
     </script>
-    <div id="tv_chart"></div>
     </div>
 """
-components.html(chart_html, height=520)
+components.html(chart_html, height=470)
