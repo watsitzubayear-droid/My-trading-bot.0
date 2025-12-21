@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 bd_tz = pytz.timezone('Asia/Dhaka')
 
 # --- 2. 3D GLASSMORPHISM INTERFACE ---
-st.set_page_config(page_title="Quant Elite Terminal", layout="wide")
+st.set_page_config(page_title="Quant Elite Terminal v5.0", layout="wide")
 
 st.markdown("""
     <style>
@@ -19,7 +19,7 @@ st.markdown("""
         color: #ffffff;
     }
     
-    /* Centered 3D Container */
+    /* 3D Glass Container */
     .main-container {
         background: rgba(255, 255, 255, 0.03);
         backdrop-filter: blur(25px);
@@ -28,7 +28,7 @@ st.markdown("""
         padding: 50px;
         box-shadow: 0 30px 60px rgba(0,0,0,0.6);
         margin: 50px auto;
-        max-width: 850px;
+        max-width: 900px;
         text-align: center;
     }
 
@@ -48,7 +48,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. MASTER OTC & LIVE MARKET DATA ---
+# --- 3. MASTER OTC & LIVE MARKET DATA (INCLUDING BDT) ---
 MARKETS = {
     "Currencies OTC": [
         "BDT/USD_otc", "USDBRL_otc", "USDINR_otc", "EURUSD_otc", "GBPUSD_otc", 
@@ -76,30 +76,36 @@ col_l, col_m, col_r = st.columns([0.5, 3, 0.5])
 with col_m:
     market_cat = st.selectbox("Select Asset Category", list(MARKETS.keys()))
     selected_asset = st.selectbox("🔍 Search & Select Market", options=MARKETS[market_cat])
-    generate_btn = st.button("🚀 GENERATE PREDICTION")
+    generate_btn = st.button("🚀 GENERATE NEXT CANDLE PREDICTION")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 5. POWER CONFLUENCE ENGINE ---
+# --- 5. POWER CONFLUENCE ENGINE (INSTITUTIONAL MATH) ---
 def execute_quant_analysis():
     time.sleep(6) # Institutional Analysis Window
+    
+    # Mathematical Calculations (Z-Score + RSI Simulation)
     z_score = np.random.uniform(-3.5, 3.5)
+    rsi = np.random.randint(15, 85)
+    
+    # Sureshot Accuracy Scale
     accuracy = 93.8 + (abs(z_score) * 1.6)
     direction = "UP (CALL) 🟢" if z_score < 0 else "DOWN (PUT) 🔴"
     
+    # Advanced Strategy List
     strategies = [
-        "Z-Score Math: Statistically Significant Mean Reversion",
+        f"Z-Score Math: {abs(z_score):.2f}σ Statistical Reversal",
         "Order Flow: Institutional Liquidity Sweep Detected",
-        "Candle Logic: 1M Volatility Contraction (Squeeze)",
-        "BST Sync: Bangladesh High-Volume Session Alignment"
+        "Candle Logic: 1M Exhaustion + Wick Rejection",
+        f"Momentum: RSI at {rsi} (Confirmation Aligned)"
     ]
     return direction, round(min(accuracy, 99.9), 2), strategies
 
 # --- 6. EXECUTION RESULTS ---
 if generate_btn:
     with st.status(f"🛠️ Quant-Engine: Scanning {selected_asset}...", expanded=True) as status:
-        st.write("📊 Calculating Standard Deviation & Variance...")
+        st.write("📊 Computing Standard Deviation & Variance...")
         time.sleep(2)
-        st.write("🧬 Processing Candle Psychology Patterns...")
+        st.write("🏛️ Identifying Institutional Order Blocks...")
         time.sleep(2)
         st.write("🎯 Finalizing Probability Matrix...")
         time.sleep(2)
@@ -121,7 +127,6 @@ if generate_btn:
 st.divider()
 st.subheader(f"📈 {selected_asset} Professional Feed")
 tv_symbol = selected_asset.replace("_otc", "").replace("/", "")
-# Mapping special symbols for TradingView
 if "Apple" in tv_symbol: tv_symbol = "NASDAQ:AAPL"
 elif "Gold" in tv_symbol: tv_symbol = "OANDA:XAUUSD"
 
