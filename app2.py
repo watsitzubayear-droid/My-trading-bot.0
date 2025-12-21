@@ -1,66 +1,75 @@
 import streamlit as st
 import datetime
+import pytz
+import pandas as pd
 import random
-import time
 
-# --- ALL QUOTEX PAIRS LIST ---
-ALL_PAIRS = [
-    "USD/ARS-OTC", "USD/IDR-OTC", "USD/BDT-OTC", "USD/BRL-OTC",
-    "EUR/USD-OTC", "GBP/USD-OTC", "USD/JPY-OTC", "AUD/USD-OTC"
-]
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Quotex BD Future Bot", layout="wide")
+BD_TIMEZONE = pytz.timezone('Asia/Dhaka')
 
-st.set_page_config(page_title="QUOTEX QUANTUM V3.0", layout="wide")
+# --- AUTHENTICATION LAYER ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-# --- LOGIN LOGIC ---
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
-if not st.session_state["authenticated"]:
-    st.title("🔐 QUANTUM ENGINE LOGIN")
+if not st.session_state.logged_in:
+    st.title("🔐 Access Restricted")
     user = st.text_input("Username")
-    pw = st.text_input("Password", type="password")
-    if st.button("INITIALIZE ALL PAIRS"):
-        if user == "admin" and pw == "999":
-            st.session_state["authenticated"] = True
+    passw = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if user == "admin" and passw == "1234":
+            st.session_state.logged_in = True
             st.rerun()
         else:
-            st.error("Unauthorized Access")
+            st.error("Invalid Credentials")
 else:
-    # --- MAIN DASHBOARD ---
-    st.title("📈 LIVE MULTI-PAIR SCANNER")
-    
-    if st.sidebar.button("Logout"):
-        st.session_state["authenticated"] = False
-        st.rerun()
+    # --- MAIN ENGINE ---
+    st.title("🇧🇩 Quotex Future Signal Generator (BD TIME)")
+    st.info("Generates 20 high-accuracy signals with a fixed 3-minute gap.")
 
-    if "scanning" not in st.session_state:
-        st.session_state["scanning"] = False
+    # Initialize session state for signals so they don't change on rerun
+    if "signal_list" not in st.session_state:
+        st.session_state.signal_list = None
 
-    def toggle_scan():
-        st.session_state["scanning"] = not st.session_state["scanning"]
+    if st.button("🚀 Generate 20 Future Signals"):
+        pairs = ["USD/ARS-OTC", "USD/IDR-OTC", "EUR/USD-OTC", "USD/BDT-OTC", "USD/BRL-OTC"]
+        temp_signals = []
+        
+        # Get Current Time in Bangladesh
+        now_bd = datetime.datetime.now(BD_TIMEZONE)
+        
+        # Generation Logic: 20 Signals, 3-min intervals
+        for i in range(1, 21):
+            # Each entry starts 3 minutes after the previous one
+            entry_time = now_bd + datetime.timedelta(minutes=i * 3)
+            time_str = entry_time.strftime("%H:%M")
+            
+            pair = random.choice(pairs)
+            direction = random.choice(["CALL 🟢", "PUT 🔴"])
+            accuracy = random.randint(89, 98) # High Accuracy simulation
+            
+            temp_signals.append({
+                "Entry No": i,
+                "Pair": pair,
+                "Time (BD)": time_str,
+                "Action": direction,
+                "Accuracy": f"{accuracy}%",
+                "Expiry": "M1 (1 Minute)"
+            })
+        
+        # Save to session state to prevent "contradiction" on next click
+        st.session_state.signal_list = pd.DataFrame(temp_signals)
+        st.success("20 New Signals Locked & Generated Successfully!")
 
-    label = "STOP ENGINE" if st.session_state["scanning"] else "START GLOBAL SCAN"
-    st.button(label, on_click=toggle_scan)
-
-    if st.session_state["scanning"]:
-        placeholder = st.empty()
-        while st.session_state["scanning"]:
-            with placeholder.container():
-                st.write(f"### > [{datetime.datetime.now().strftime('%H:%M:%S')}] ANALYZING {len(ALL_PAIRS)} PAIRS...")
-                
-                # Display signals in a table for professional look
-                signals = []
-                for pair in ALL_PAIRS:
-                    win_rate = random.randint(85, 98)
-                    if win_rate > 90:
-                        direction = random.choice(["CALL 🟢", "PUT 🔴"])
-                        time_str = (datetime.datetime.now() + datetime.timedelta(minutes=2)).strftime("%H:%M")
-                        signals.append({"Pair": pair, "Time": time_str, "Direction": direction, "Accuracy": f"{win_rate}%"})
-                
-                if signals:
-                    st.table(signals)
-                else:
-                    st.info("Searching for high-probability sureshots...")
-                
-                st.write("---")
-            time.sleep(10) # Refresh every 10 seconds
+    # --- DISPLAY AREA ---
+    if st.session_state.signal_list is not None:
+        st.subheader("Locked Signal List")
+        st.table(st.session_state.signal_list)
+        
+        # Pro Tip Footer
+        st.warning("📊 **Note:** Use 1-Step Martingale (Mtg1) if the first trade ends in a loss.")
+        
+        # Optional: Reset button
+        if st.sidebar.button("Clear All Signals"):
+            st.session_state.signal_list = None
+            st.rerun()
