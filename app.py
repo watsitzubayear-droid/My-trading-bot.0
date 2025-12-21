@@ -60,14 +60,14 @@ def main_terminal():
         .main-container {
             background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(30px);
             border-radius: 40px; border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 40px; margin: auto; max-width: 950px; text-align: center;
+            padding: 40px; margin: auto; max-width: 950px; text-align: center; color: white;
         }
         </style>
         """, unsafe_allow_html=True)
 
     # Sidebar Logout & Info
     st.sidebar.markdown(f"### 👤 User: {VALID_USER}")
-    st.sidebar.info("System: Sureshot v6.0\nStatus: Secure Connection")
+    st.sidebar.info("System: Sureshot v17.0\nStatus: 82 Markets Active")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
@@ -76,12 +76,35 @@ def main_terminal():
     st.markdown("<div class='main-container'>", unsafe_allow_html=True)
     st.title("☠️ ZOHA ELITE SIGNAL ☠️")
     
-    # THE COMPLETE MARKET DATABASE FROM YOUR REQUESTS
+    # --- ENHANCED MARKET DATABASE (ALL 80+ PAIRS) ---
     MARKETS = {
-        "Currencies OTC": ["BDT/USD_otc", "USD/INR_otc", "USD/BRL_otc", "EUR/USD_otc", "GBP/USD_otc", "USD/JPY_otc", "AUD/CAD_otc", "NZD/USD_otc"],
-        "Global Live": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "BTCUSD", "ETHUSD", "SOLUSD"],
-        "Stocks OTC": ["Apple_otc", "Microsoft_otc", "Google_otc", "Tesla_otc", "Amazon_otc", "Meta_otc", "Netflix_otc"],
-        "Commodities": ["Gold_otc", "Silver_otc", "Crude Oil_otc", "Natural Gas_otc"]
+        "Currencies OTC": [
+            "AUD/CAD_otc", "AUD/CHF_otc", "AUD/JPY_otc", "AUD/NZD_otc", "AUD/USD_otc", 
+            "BDT/USD_otc", "CAD/CHF_otc", "CAD/JPY_otc", "CHF/JPY_otc", "EUR/AUD_otc", 
+            "EUR/CAD_otc", "EUR/CHF_otc", "EUR/GBP_otc", "EUR/JPY_otc", "EUR/NZD_otc", 
+            "EUR/USD_otc", "GBP/AUD_otc", "GBP/CAD_otc", "GBP/CHF_otc", "GBP/JPY_otc", 
+            "GBP/NZD_otc", "GBP/USD_otc", "NZD/CAD_otc", "NZD/JPY_otc", "NZD/USD_otc", 
+            "USD/ARS_otc", "USD/BRL_otc", "USD/CAD_otc", "USD/CHF_otc", "USD/COP_otc", 
+            "USD/DZD_otc", "USD/EGP_otc", "USD/IDR_otc", "USD/INR_otc", "USD/JPY_otc", 
+            "USD/MXN_otc", "USD/NGN_otc", "USD/PHP_otc", "USD/PKR_otc", "USD/TRY_otc", "USD/ZAR_otc"
+        ],
+        "Crypto": [
+            "Aptos (APT)", "Arbitrum (ARB)", "Avalanche (AVAX)", "Axie Infinity (AXS)", 
+            "Binance Coin (BNB)", "Bitcoin (BTC)", "Bitcoin Cash (BCH)", "Bonk (BONK)", 
+            "Cardano (ADA)", "Celestia (TIA)", "Chainlink (LINK)", "Cosmos (ATOM)", 
+            "Dash (DASH)", "Dogecoin (DOGE)", "Dogwifhat (WIF)", "Ethereum (ETH)", 
+            "Floki (FLOKI)", "Gala (GALA)", "Hamster Kombat", "Litecoin (LTC)", 
+            "Pepe (PEPE)", "Polkadot (DOT)", "Ripple (XRP)", "Shiba Inu (SHIB)", 
+            "Solana (SOL)", "Uniswap (UNI)"
+        ],
+        "Stocks OTC": [
+            "Amazon_otc", "American Express_otc", "Apple_otc", "Boeing_otc", "Facebook_otc", 
+            "Google_otc", "Intel_otc", "McDonald's_otc", "Microsoft_otc", "Netflix_otc", 
+            "Pfizer_otc", "Tesla_otc"
+        ],
+        "Commodities": [
+            "Gold_otc", "Silver_otc", "Crude Oil_otc", "Natural Gas_otc", "UKBrent_otc", "USCrude_otc"
+        ]
     }
 
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -121,12 +144,18 @@ def main_terminal():
     
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Real-Time Chart Widget
+    # Real-Time Chart Widget (Expanded Logic)
     st.divider()
-    tv_sym = asset.replace("_otc", "").replace("/", "")
-    # TV Mapping fixes
-    if "Apple" in tv_sym: tv_sym = "AAPL"
-    elif "Gold" in tv_sym: tv_sym = "XAUUSD"
+    tv_sym = asset.split("_")[0].replace("/", "")
+    # TradingView Symbol Mapping
+    if "Bitcoin" in asset: tv_sym = "BTCUSD"
+    elif "Ethereum" in asset: tv_sym = "ETHUSD"
+    elif "Gold" in asset: tv_sym = "XAUUSD"
+    elif "Silver" in asset: tv_sym = "XAGUSD"
+    elif "Crude" in asset: tv_sym = "USOIL"
+    elif "Apple" in asset: tv_sym = "AAPL"
+    elif "Tesla" in asset: tv_sym = "TSLA"
+    elif "Microsoft" in asset: tv_sym = "MSFT"
 
     components.html(f"""
         <div style="height:500px; border-radius: 20px; overflow: hidden; border: 1px solid #4facfe;">
