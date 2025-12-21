@@ -17,7 +17,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state["authenticated"]:
     st.title("🔐 QUANTUM ENGINE LOGIN")
-    user = st.text_input("zoha")
+    user = st.text_input("Username")
     pw = st.text_input("Password", type="password")
     if st.button("INITIALIZE ALL PAIRS"):
         if user == "admin" and pw == "999":
