@@ -74,7 +74,7 @@ def main_terminal():
 
     # Center Interface
     st.markdown("<div class='main-container'>", unsafe_allow_html=True)
-    st.title("🏦 QUANT ELITE TERMINAL")
+    st.title("☠️ ZOHA ELITE SIGNAL ☠️")
     
     # THE COMPLETE MARKET DATABASE FROM YOUR REQUESTS
     MARKETS = {
