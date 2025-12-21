@@ -30,7 +30,7 @@ def login_page():
         """, unsafe_allow_html=True)
     
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
-    st.title("🏦 QUANT ELITE LOGIN")
+    st.title("🏦 ZOHA ELITE LOGIN")
     u = st.text_input("Username", placeholder="zoha-trading09")
     p = st.text_input("Password", type="password", placeholder="••••••••")
     
@@ -44,7 +44,7 @@ def login_page():
 
 # --- 3. MAIN TRADING TERMINAL ---
 def main_terminal():
-    st.set_page_config(page_title="Quant Elite Terminal", layout="wide")
+    st.set_page_config(page_title="Zoha Elite Terminal", layout="wide")
     
     # Advanced 3D Blurred Background
     st.markdown("""
@@ -74,7 +74,7 @@ def main_terminal():
 
     # Center Interface
     st.markdown("<div class='main-container'>", unsafe_allow_html=True)
-    st.title("🏦 QUANT ELITE TERMINAL")
+    st.title(" ZOHA ELITE TERMINAL")
     
     # THE COMPLETE MARKET DATABASE FROM YOUR REQUESTS
     MARKETS = {
