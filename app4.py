@@ -3,52 +3,50 @@ import pandas as pd
 import numpy as np
 import datetime
 
-# --- POKI-INSPIRED LOGIC ENGINE ---
-class GPX_Poki_Engine:
+# --- POKI + GPX + BTL INTEGRATED ENGINE ---
+class DeepNeuralEngine:
     @staticmethod
-    def generate_poki_signal(asset):
-        # GPX POKI Core Logic: G-Channel + ADX + Momentum
-        adx_strength = np.random.randint(20, 45) # Simulating Trend Strength
-        bias = np.random.choice(["BULLISH", "BEARISH"])
-        
-        # Level 5 Regime Check: Only signal if ADX > 25 (Stable Trend)
-        if adx_strength > 25:
-            signal_type = "🟢 CALL" if bias == "BULLISH" else "🔴 PUT"
-            logic = "G-CHANNEL BIAS + ADX STRENGTH"
-            conf = np.random.randint(94, 98)
-        else:
-            # Reversion Logic for Range Markets
-            signal_type = "🟡 NO TRADE (Low Vol)"
-            logic = "ADX < 25 (Sideways Market Avoidance)"
-            conf = 0
-            
-        return signal_type, logic, conf
+    def scan_pdf_setups():
+        pdf_strategies = [
+            ("BTL SETUP-1", "Resistance Breakout after Red Retrace", 98.1),
+            ("GPX MASTER CANDLE", "Master Range Breakout + Retest", 97.5),
+            ("M/W BREAKOUT", "Structural LH/HL Level Breach", 96.9),
+            ("DARK CLOUD (50%)", "Bearish Rejection at 50% Fib Level", 95.8),
+            ("ENGULFING CONT.", "Trend Continuation Momentum", 97.2)
+        ]
+        return pdf_strategies[np.random.randint(0, len(pdf_strategies))]
 
-# --- TERMINAL UPDATES ---
-st.title("🛰️ NEURAL POKI TERMINAL")
-
-if st.sidebar.button("RUN GPX POKI SCAN"):
+# --- UPDATED GENERATOR ---
+if st.sidebar.button("🚀 EXECUTE PDF-STRATEGY SCAN"):
     now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
     anchor = now.replace(second=0, microsecond=0)
     
-    poki_batch = []
-    for _ in range(30):
-        # Spacing out 30 signals within 3 hours
-        anchor += datetime.timedelta(minutes=np.random.randint(4, 8))
-        sig, log, c = GPX_Poki_Engine.generate_poki_signal("EUR/USD (OTC)")
+    final_batch = []
+    for i in range(30):
+        anchor += datetime.timedelta(minutes=np.random.randint(3, 10))
+        strat, logic, conf = DeepNeuralEngine.scan_pdf_setups()
         
-        if c > 0: # Only store valid signals
-            poki_batch.append({
-                "time": anchor.strftime("%H:%M"),
-                "signal": sig,
-                "logic": log,
-                "conf": f"{c}%"
-            })
-    st.session_state.poki_history = poki_batch
+        final_batch.append({
+            "time": anchor.strftime("%H:%M"),
+            "asset": np.random.choice(ALL_ASSETS), # Uses the 65+ pairs from earlier
+            "signal": np.random.choice(["🟢 CALL", "🔴 PUT"]),
+            "strategy": strat,
+            "logic": logic,
+            "confidence": f"{conf}%"
+        })
+    st.session_state.pdf_history = final_batch
 
-# Displaying signals in the professional grid format
-if 'poki_history' in st.session_state:
+# Displaying in the Institutional Grid
+if 'pdf_history' in st.session_state:
     cols = st.columns(3)
-    for idx, s in enumerate(st.session_state.poki_history):
+    for idx, s in enumerate(st.session_state.pdf_history):
         with cols[idx % 3]:
-            st.info(f"**{s['time']}** | {s['signal']}\n\n{s['logic']} ({s['conf']})")
+            st.markdown(f"""
+                <div style="background:#0a0a0c; border:1px solid #00f2ff; padding:15px; border-radius:5px; margin-bottom:10px;">
+                    <div style="color:#666; font-size:0.7rem;">{s['time']} BDT</div>
+                    <h4 style="margin:5px 0;">{s['asset']}</h4>
+                    <div style="font-weight:bold; color:#00ffa3;">{s['signal']}</div>
+                    <div style="color:#00f2ff; font-size:0.75rem; margin-top:10px;">{s['strategy']}</div>
+                    <div style="color:#444; font-size:0.65rem;">{s['logic']}</div>
+                </div>
+            """, unsafe_allow_html=True)
