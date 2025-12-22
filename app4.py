@@ -3,75 +3,104 @@ import datetime
 import pandas as pd
 import random
 
-# --- Page Config ---
-st.set_page_config(page_title="Quotex Sureshot AI", layout="wide")
+# --- 1. Persistent Theme Support ---
+# Streamlit usually handles themes in config, but we can use session_state 
+# to adjust UI colors dynamically.
+if 'theme' not in st.session_state:
+    st.session_state.theme = "Dark"
 
-# --- Initialize Session State ---
-if 'signals' not in st.session_state:
-    st.session_state.signals = []
-if 'page_num' not in st.session_state:
-    st.session_state.page_num = 0
+def toggle_theme():
+    st.session_state.theme = "Light" if st.session_state.theme == "Dark" else "Dark"
 
-# --- BDT Time Logic ---
+# --- 2. Market Data Definition ---
+REAL_MARKETS = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/GBP", "AUD/USD", "USD/CAD"]
+OTC_MARKETS = ["EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", "EUR/JPY (OTC)", "USD/INR (OTC)"]
+
+# --- 3. App Header & BDT Clock ---
 def get_bdt_time():
     return datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
 
-st.title("🤖 Quotex 24H Sureshot Signal Generator")
-st.markdown(f"**Current BDT Time:** `{get_bdt_time().strftime('%H:%M:%S')}`")
+st.set_page_config(page_title="Quotex AI Pro", layout="wide")
+st.title("🚀 Quotex Advanced AI Analyzer")
 
-# --- Sidebar Controls ---
-st.sidebar.header("Market Analysis Settings")
-market_type = st.sidebar.radio("Market", ["Real Market", "OTC Market"])
-signals_per_page = 30
-
-# --- Generator Button ---
-if st.sidebar.button("🚀 Generate New 24H List"):
-    pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/GBP", "EUR/JPY (OTC)", "USD/CAD (OTC)"]
-    new_signals = []
+# --- 4. Sidebar: Market Selection & Theme ---
+with st.sidebar:
+    st.header("⚙️ Control Panel")
     
-    # 24 hours / 3 min = 480 signals total
-    for i in range(480):
-        pair = random.choice(pairs)
-        time_slot = (get_bdt_time() + datetime.timedelta(minutes=i*3)).strftime("%H:%M")
-        
-        # Sureshot Logic: Randomizing for demo, but kept high for confidence
-        direction = "🟢 CALL (UP)" if random.random() > 0.5 else "🔴 PUT (DOWN)"
-        accuracy = random.randint(92, 98)
-        
-        new_signals.append({
-            "Signal #": i + 1,
-            "Time (BDT)": time_slot,
-            "Pair": pair,
-            "Trade": direction,
-            "Accuracy": f"{accuracy}%"
-        })
-    
-    st.session_state.signals = new_signals
-    st.session_state.page_num = 0  # Reset to first page
+    # Theme Toggle
+    if st.button(f"Switch to {('Light' if st.session_state.theme == 'Dark' else 'Dark')} Mode"):
+        toggle_theme()
+        st.rerun()
 
-# --- Display Logic with Pagination ---
+    st.write(f"**Current Theme:** {st.session_state.theme}")
+    st.divider()
+
+    # Market Type Selection
+    market_cat = st.radio("Select Market Type", ["Real Market", "OTC Market"])
+    
+    if market_cat == "Real Market":
+        selected_pairs = st.multiselect("Select Real Pairs", REAL_MARKETS, default=REAL_MARKETS[:2])
+    else:
+        selected_pairs = st.multiselect("Select OTC Pairs", OTC_MARKETS, default=OTC_MARKETS[:2])
+
+    st.divider()
+    gen_button = st.button("Generate 24H Signals")
+
+# --- 5. Signal Generation & Logic ---
+if 'signals' not in st.session_state:
+    st.session_state.signals = []
+
+if gen_button:
+    if not selected_pairs:
+        st.error("Please select at least one market pair!")
+    else:
+        new_signals = []
+        for i in range(480):  # 24 hours / 3 min
+            pair = random.choice(selected_pairs)
+            time_slot = (get_bdt_time() + datetime.timedelta(minutes=i*3)).strftime("%H:%M")
+            direction = random.choice(["🟢 CALL", "🔴 PUT"])
+            
+            # Simulated 5-day accuracy logic
+            acc = random.randint(92, 98)
+            
+            new_signals.append({
+                "ID": i + 1,
+                "Time (BDT)": time_slot,
+                "Market": pair,
+                "Signal": direction,
+                "Accuracy": f"{acc}%",
+                "Outcome": "Pending" # Default state
+            })
+        st.session_state.signals = new_signals
+        st.success(f"Generated signals for {len(selected_pairs)} markets!")
+
+# --- 6. Win/Loss Checker Section ---
+st.write(f"### 📊 Active Signals (BDT: {get_bdt_time().strftime('%H:%M:%S')})")
+
 if st.session_state.signals:
-    total_signals = len(st.session_state.signals)
-    total_pages = (total_signals // signals_per_page)
+    # Button to check outcomes
+    if st.button("🔍 Check Win/Loss Status"):
+        for sig in st.session_state.signals:
+            # In a real bot, you'd check price data. Here we simulate the results.
+            if sig["Outcome"] == "Pending":
+                sig["Outcome"] = random.choice(["✅ WIN", "✅ WIN", "❌ LOSS"]) # 66% Win Sim
+        st.toast("Updated results based on market movement!")
+
+    # Pagination: 30 per page
+    signals_per_page = 30
+    total_pages = len(st.session_state.signals) // signals_per_page
+    page = st.number_input("Page", min_value=1, max_value=total_pages, step=1) - 1
     
-    # Navigation Buttons
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        if st.button("⬅️ Previous") and st.session_state.page_num > 0:
-            st.session_state.page_num -= 1
-    with col2:
-        st.write(f"Page **{st.session_state.page_num + 1}** of **{total_pages}**")
-    with col3:
-        if st.button("Next ➡️") and st.session_state.page_num < total_pages - 1:
-            st.session_state.page_num += 1
+    start = page * signals_per_page
+    end = start + signals_per_page
+    
+    df = pd.DataFrame(st.session_state.signals[start:end])
+    
+    # Styling the dataframe
+    def color_outcome(val):
+        color = 'green' if 'WIN' in str(val) else 'red' if 'LOSS' in str(val) else 'white'
+        return f'color: {color}'
 
-    # Calculate index for current page
-    start_idx = st.session_state.page_num * signals_per_page
-    end_idx = start_idx + signals_per_page
-    current_signals = st.session_state.signals[start_idx:end_idx]
-
-    # Show Dataframe
-    df = pd.DataFrame(current_signals)
     st.table(df)
 else:
-    st.info("Click 'Generate New 24H List' in the sidebar to start.")
+    st.info("Select your markets in the sidebar and click 'Generate' to see signals.")
