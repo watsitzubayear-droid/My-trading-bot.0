@@ -1,4 +1,4 @@
-# quotex_bot_fixed.py
+# quotex_bot_login.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -25,7 +25,9 @@ QUOTEX_PAIRS = {
     'USD/CHF': {'volatility': 0.035, 'base_rate': 0.8850}
 }
 
-# ============ SESSION STATE INITIALIZATION ============
+# ============ SESSION STATE ============
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 if 'running' not in st.session_state:
     st.session_state.running = False
 if 'signal_history' not in st.session_state:
@@ -42,8 +44,6 @@ class Signal(Enum):
     HOLD = 0
 
 class TechnicalAnalyzer:
-    """Technical analysis calculator - all methods are instance methods"""
-    
     def calculate_sma(self, data, period):
         return data['close'].rolling(window=period).mean()
     
@@ -51,14 +51,11 @@ class TechnicalAnalyzer:
         return data['close'].ewm(span=period, adjust=False).mean()
     
     def calculate_rsi(self, data, period=14):
-        try:
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-            rs = gain / loss
-            return 100 - (100 / (1 + rs))
-        except:
-            return pd.Series([50] * len(data), index=data.index)  # Default neutral
+        delta = data['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
     
     def calculate_macd(self, data):
         ema12 = self.calculate_ema(data, 12)
@@ -82,98 +79,83 @@ class TechnicalAnalyzer:
         return k_percent, d_percent
     
     def calculate_adx(self, data, period=14):
-        try:
-            plus_dm = data['high'].diff()
-            minus_dm = data['low'].diff()
-            plus_dm = plus_dm.where(plus_dm > 0, 0)
-            minus_dm = minus_dm.where(minus_dm > 0, 0)
-            
-            tr1 = data['high'] - data['low']
-            tr2 = abs(data['high'] - data['close'].shift())
-            tr3 = abs(data['low'] - data['close'].shift())
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            
-            atr = tr.rolling(window=period).mean()
-            plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
-            minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
-            adx = dx.rolling(window=period).mean()
-            return adx, plus_di, minus_di
-        except:
-            return pd.Series([20] * len(data)), pd.Series([20] * len(data)), pd.Series([20] * len(data))
+        plus_dm = data['high'].diff()
+        minus_dm = data['low'].diff()
+        plus_dm = plus_dm.where(plus_dm > 0, 0)
+        minus_dm = minus_dm.where(minus_dm > 0, 0)
+        
+        tr1 = data['high'] - data['low']
+        tr2 = abs(data['high'] - data['close'].shift())
+        tr3 = abs(data['low'] - data['close'].shift())
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        atr = tr.rolling(window=period).mean()
+        plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
+        minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        adx = dx.rolling(window=period).mean()
+        return adx, plus_di, minus_di
     
     def calculate_fibonacci_levels(self, data):
-        try:
-            recent_high = data['high'].rolling(window=50).max().iloc[-1]
-            recent_low = data['low'].rolling(window=50).min().iloc[-1]
-            diff = recent_high - recent_low
-            return {
-                '0%': recent_high,
-                '23.6%': recent_high - 0.236 * diff,
-                '38.2%': recent_high - 0.382 * diff,
-                '50%': recent_high - 0.5 * diff,
-                '61.8%': recent_high - 0.618 * diff,
-                '78.6%': recent_high - 0.786 * diff,
-                '100%': recent_low
-            }
-        except:
-            return {'0%': 0, '100%': 0}
+        recent_high = data['high'].rolling(window=50).max().iloc[-1]
+        recent_low = data['low'].rolling(window=50).min().iloc[-1]
+        diff = recent_high - recent_low
+        return {
+            '0%': recent_high,
+            '23.6%': recent_high - 0.236 * diff,
+            '38.2%': recent_high - 0.382 * diff,
+            '50%': recent_high - 0.5 * diff,
+            '61.8%': recent_high - 0.618 * diff,
+            '78.6%': recent_high - 0.786 * diff,
+            '100%': recent_low
+        }
     
     def calculate_vwap(self, data):
         typical_price = (data['high'] + data['low'] + data['close']) / 3
         return (typical_price * data['volume']).cumsum() / data['volume'].cumsum()
     
     def detect_support_resistance(self, data, window=20):
-        """FIXED: Now an instance method"""
-        try:
-            recent_data = data.tail(50)
-            resistance = recent_data['high'].rolling(window=window).max().iloc[-1]
-            support = recent_data['low'].rolling(window=window).min().iloc[-1]
-            return support, resistance
-        except:
-            return data['low'].iloc[-1], data['high'].iloc[-1]  # Fallback
+        recent_data = data.tail(50)
+        resistance = recent_data['high'].rolling(window=window).max().iloc[-1]
+        support = recent_data['low'].rolling(window=window).min().iloc[-1]
+        return support, resistance
 
 class MultiPairDataProvider:
     def __init__(self):
         self.pairs = QUOTEX_PAIRS
     
     def fetch_pair_data(self, pair, periods=200):
-        """Safe data fetching with error handling"""
-        try:
-            config = self.pairs[pair]
-            base_rate = config['base_rate']
-            volatility = config['volatility']
+        config = self.pairs[pair]
+        base_rate = config['base_rate']
+        volatility = config['volatility']
+        
+        data = []
+        current_time = datetime.now(BANGLADESH_TZ)
+        
+        for i in range(periods):
+            timestamp = current_time - timedelta(minutes=(periods-i)*3)
+            change = np.random.normal(0, volatility/100)
+            base_rate *= (1 + change)
             
-            data = []
-            current_time = datetime.now(BANGLADESH_TZ)
+            hour = timestamp.hour
+            if 10 <= hour <= 16:
+                base_rate += np.random.normal(0, volatility/2)
             
-            for i in range(periods):
-                timestamp = current_time - timedelta(minutes=(periods-i)*3)
-                change = np.random.normal(0, volatility/100)
-                base_rate *= (1 + change)
-                
-                hour = timestamp.hour
-                if 10 <= hour <= 16:
-                    base_rate += np.random.normal(0, volatility/2)
-                
-                open_price = base_rate + np.random.uniform(-volatility/10, volatility/10)
-                high_price = open_price + np.random.uniform(0, volatility/8)
-                low_price = open_price - np.random.uniform(0, volatility/8)
-                close_price = low_price + np.random.uniform(0, high_price - low_price)
-                
-                data.append({
-                    'timestamp': timestamp,
-                    'open': round(open_price, 4),
-                    'high': round(high_price, 4),
-                    'low': round(low_price, 4),
-                    'close': round(close_price, 4),
-                    'volume': np.random.randint(5000, 80000)
-                })
+            open_price = base_rate + np.random.uniform(-volatility/10, volatility/10)
+            high_price = open_price + np.random.uniform(0, volatility/8)
+            low_price = open_price - np.random.uniform(0, volatility/8)
+            close_price = low_price + np.random.uniform(0, high_price - low_price)
             
-            return pd.DataFrame(data)
-        except Exception as e:
-            st.session_state.errors.append(f"Data fetch error for {pair}: {e}")
-            return pd.DataFrame([])  # Return empty on error
+            data.append({
+                'timestamp': timestamp,
+                'open': round(open_price, 4),
+                'high': round(high_price, 4),
+                'low': round(low_price, 4),
+                'close': round(close_price, 4),
+                'volume': np.random.randint(5000, 80000)
+            })
+        
+        return pd.DataFrame(data)
 
 class StrategyEngine:
     def __init__(self):
@@ -191,131 +173,128 @@ class StrategyEngine:
         }
     
     def calculate_strategy_scores(self, data):
-        """Calculate scores with comprehensive error handling"""
-        if data.empty:
-            return {}, data
-        
         scores = {}
         
-        try:
-            # Calculate indicators
-            data['SMA_20'] = self.analyzer.calculate_sma(data, 20)
-            data['SMA_50'] = self.analyzer.calculate_sma(data, 50)
-            data['RSI'] = self.analyzer.calculate_rsi(data)
-            data['MACD'], data['MACD_SIGNAL'] = self.analyzer.calculate_macd(data)
-            data['BB_UPPER'], data['BB_MIDDLE'], data['BB_LOWER'] = self.analyzer.calculate_bollinger_bands(data)
-            data['STOCH_K'], data['STOCH_D'] = self.analyzer.calculate_stochastic(data)
-            data['ADX'], data['PLUS_DI'], data['MINUS_DI'] = self.analyzer.calculate_adx(data)
-            data['VWAP'] = self.analyzer.calculate_vwap(data)
-            
-            # Score strategies
-            scores['ma_crossover'] = 1 if data['SMA_20'].iloc[-1] > data['SMA_50'].iloc[-1] else -1
-            
-            rsi_val = data['RSI'].iloc[-1]
-            scores['rsi'] = 1 if rsi_val < 30 else (-1 if rsi_val > 70 else 0)
-            
-            scores['macd'] = 1 if data['MACD'].iloc[-1] > data['MACD_SIGNAL'].iloc[-1] else -1
-            
-            price = data['close'].iloc[-1]
-            if price <= data['BB_LOWER'].iloc[-1]: scores['bollinger'] = 1
-            elif price >= data['BB_UPPER'].iloc[-1]: scores['bollinger'] = -1
-            else: scores['bollinger'] = 0
-            
-            k_val = data['STOCH_K'].iloc[-1]
-            scores['stochastic'] = 1 if k_val < 20 else (-1 if k_val > 80 else 0)
-            
-            adx_val = data['ADX'].iloc[-1]
-            if adx_val > 25:
-                scores['adx'] = 1 if data['PLUS_DI'].iloc[-1] > data['MINUS_DI'].iloc[-1] else -1
-            else:
-                scores['adx'] = 0
-            
-            fib_levels = self.analyzer.calculate_fibonacci_levels(data)
-            if abs(price - fib_levels['61.8%']) < 0.10: scores['fibonacci'] = 1
-            elif abs(price - fib_levels['38.2%']) < 0.10: scores['fibonacci'] = -1
-            else: scores['fibonacci'] = 0
-            
-            scores['vwap'] = 1 if price > data['VWAP'].iloc[-1] else -1
-            
-            support, resistance = self.analyzer.detect_support_resistance(data)
-            if abs(price - support) < 0.10: scores['support_resistance'] = 1
-            elif abs(price - resistance) < 0.10: scores['support_resistance'] = -1
-            else: scores['support_resistance'] = 0
-            
-        except Exception as e:
-            st.session_state.errors.append(f"Score calculation error: {e}")
-            # Return neutral scores
-            scores = {k: 0 for k in self.weights.keys()}
+        # Calculate all indicators
+        data['SMA_20'] = self.analyzer.calculate_sma(data, 20)
+        data['SMA_50'] = self.analyzer.calculate_sma(data, 50)
+        data['RSI'] = self.analyzer.calculate_rsi(data)
+        data['MACD'], data['MACD_SIGNAL'] = self.analyzer.calculate_macd(data)
+        data['BB_UPPER'], data['BB_MIDDLE'], data['BB_LOWER'] = self.analyzer.calculate_bollinger_bands(data)
+        data['STOCH_K'], data['STOCH_D'] = self.analyzer.calculate_stochastic(data)
+        data['ADX'], data['PLUS_DI'], data['MINUS_DI'] = self.analyzer.calculate_adx(data)
+        data['VWAP'] = self.analyzer.calculate_vwap(data)
+        
+        # Score strategies
+        scores['ma_crossover'] = 1 if data['SMA_20'].iloc[-1] > data['SMA_50'].iloc[-1] else -1
+        
+        rsi_val = data['RSI'].iloc[-1]
+        scores['rsi'] = 1 if rsi_val < 30 else (-1 if rsi_val > 70 else 0)
+        
+        scores['macd'] = 1 if data['MACD'].iloc[-1] > data['MACD_SIGNAL'].iloc[-1] else -1
+        
+        price = data['close'].iloc[-1]
+        if price <= data['BB_LOWER'].iloc[-1]: scores['bollinger'] = 1
+        elif price >= data['BB_UPPER'].iloc[-1]: scores['bollinger'] = -1
+        else: scores['bollinger'] = 0
+        
+        k_val = data['STOCH_K'].iloc[-1]
+        scores['stochastic'] = 1 if k_val < 20 else (-1 if k_val > 80 else 0)
+        
+        adx_val = data['ADX'].iloc[-1]
+        if adx_val > 25:
+            scores['adx'] = 1 if data['PLUS_DI'].iloc[-1] > data['MINUS_DI'].iloc[-1] else -1
+        else:
+            scores['adx'] = 0
+        
+        fib_levels = self.analyzer.calculate_fibonacci_levels(data)
+        if abs(price - fib_levels['61.8%']) < 0.10: scores['fibonacci'] = 1
+        elif abs(price - fib_levels['38.2%']) < 0.10: scores['fibonacci'] = -1
+        else: scores['fibonacci'] = 0
+        
+        scores['vwap'] = 1 if price > data['VWAP'].iloc[-1] else -1
+        
+        support, resistance = self.analyzer.detect_support_resistance(data)
+        if abs(price - support) < 0.10: scores['support_resistance'] = 1
+        elif abs(price - resistance) < 0.10: scores['support_resistance'] = -1
+        else: scores['support_resistance'] = 0
         
         return scores, data
     
     def generate_signal(self, data, deep_mode=False):
-        """Generate signal with confidence scoring"""
-        try:
-            scores, data = self.calculate_strategy_scores(data)
-            
-            if not scores:  # Empty scores
-                return Signal.HOLD, "❌ ERROR", 0, {}, data
-            
-            final_score = sum(scores[strategy] * weight for strategy, weight in self.weights.items())
-            total_weight = sum(self.weights.values())
-            normalized_score = final_score / total_weight
-            confidence = abs(normalized_score) * 100
-            
-            threshold = DEEP_ANALYSIS_THRESHOLD if deep_mode else MIN_CONFIDENCE_THRESHOLD
-            
-            if confidence >= threshold:
-                if normalized_score > 0:
-                    return Signal.BUY, f"🟢 BUY {confidence:.0f}%", confidence, scores, data
-                else:
-                    return Signal.SELL, f"🔴 SELL {confidence:.0f}%", confidence, scores, data
+        scores, data = self.calculate_strategy_scores(data)
+        final_score = sum(scores[strategy] * weight for strategy, weight in self.weights.items())
+        total_weight = sum(self.weights.values())
+        normalized_score = final_score / total_weight
+        confidence = abs(normalized_score) * 100
+        
+        threshold = DEEP_ANALYSIS_THRESHOLD if deep_mode else MIN_CONFIDENCE_THRESHOLD
+        
+        if confidence >= threshold:
+            if normalized_score > 0:
+                return Signal.BUY, f"🟢 BUY {confidence:.0f}%", confidence, scores, data
             else:
-                return Signal.HOLD, f"❌ HOLD ({confidence:.0f}% confidence)", confidence, scores, data
-        except Exception as e:
-            st.session_state.errors.append(f"Signal generation error: {e}")
-            return Signal.HOLD, "❌ ERROR", 0, {}, data
+                return Signal.SELL, f"🔴 SELL {confidence:.0f}%", confidence, scores, data
+        else:
+            return Signal.HOLD, f"❌ HOLD ({confidence:.0f}% confidence)", confidence, scores, data
 
 def analyze_all_pairs(selected_pairs):
-    """Analyze selected pairs with error handling"""
+    """Analyze selected pairs"""
     provider = MultiPairDataProvider()
     engine = StrategyEngine()
-    
     results = []
     
     for pair_name in selected_pairs:
-        try:
-            # Fetch data
-            data = provider.fetch_pair_data(pair_name, periods=200)
-            
-            if data.empty:
-                continue
-            
-            # Generate signal
-            signal_type, signal_text, confidence, scores, data = engine.generate_signal(data)
-            
-            # Deep analysis if HOLD
-            if signal_type == Signal.HOLD and st.session_state.deep_analysis:
-                data_deep = provider.fetch_pair_data(pair_name, periods=300)
-                if not data_deep.empty:
-                    signal_type, signal_text, confidence, scores, data = engine.generate_signal(data_deep, deep_mode=True)
-            
-            results.append({
-                'pair': pair_name,
-                'signal': signal_type,
-                'signal_text': signal_text,
-                'confidence': confidence,
-                'rate': data['close'].iloc[-1] if not data.empty else 0,
-                'scores': scores
-            })
-        except Exception as e:
-            st.session_state.errors.append(f"Failed to analyze {pair_name}: {e}")
-            continue
+        data = provider.fetch_pair_data(pair_name, periods=200)
+        signal_type, signal_text, confidence, scores, data = engine.generate_signal(data)
+        
+        if signal_type == Signal.HOLD:
+            data_deep = provider.fetch_pair_data(pair_name, periods=300)
+            signal_type, signal_text, confidence, scores, data = engine.generate_signal(data_deep, deep_mode=True)
+        
+        results.append({
+            'pair': pair_name,
+            'signal': signal_type,
+            'signal_text': signal_text,
+            'confidence': confidence,
+            'rate': data['close'].iloc[-1],
+            'scores': scores
+        })
     
-    # Sort by confidence
     results.sort(key=lambda x: x['confidence'], reverse=True)
     return results
 
-# ============ STREAMLIT UI ============
+# ============ LOGIN PAGE ============
+def login_page():
+    """Dedicated login page"""
+    st.markdown("""
+        <style>
+        .login-container { max-width: 400px; margin: auto; padding: 50px; }
+        .login-title { font-size: 32px; font-weight: bold; text-align: center; margin-bottom: 30px; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.markdown('<div class="login-title">🔐 Quotex Bot Login</div>', unsafe_allow_html=True)
+        
+        username = st.text_input("Username", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
+        
+        col1, col2 = st.columns([1, 2])
+        with col2:
+            if st.button("Login", use_container_width=True):
+                if username == "admin" and password == "admin123":
+                    st.session_state.logged_in = True
+                    st.success("✅ Login successful! Redirecting...")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid credentials!")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# ============ SIDEBAR & THEME ============
 def create_sidebar():
     """Create sidebar with menu and theme toggle"""
     with st.sidebar:
@@ -346,10 +325,17 @@ def create_sidebar():
         st.markdown("### ⚡ Settings")
         st.session_state.deep_analysis = st.checkbox("Enable Deep Analysis", value=True)
         
+        # Logout button
+        st.markdown("---")
+        if st.button("🚪 Logout"):
+            st.session_state.logged_in = False
+            st.session_state.running = False
+            st.rerun()
+        
         # Error log
         if st.session_state.errors:
             with st.expander("⚠️ Error Log"):
-                for error in st.session_state.errors[-5:]:  # Show last 5
+                for error in st.session_state.errors[-5:]:
                     st.error(error)
         
         st.markdown("---")
@@ -357,8 +343,9 @@ def create_sidebar():
         
         return selected_pairs
 
+# ============ MAIN BOT INTERFACE ============
 def main_bot_interface(selected_pairs):
-    """Main trading bot interface with live clock"""
+    """Main trading bot interface"""
     # Apply theme
     if st.session_state.dark_mode:
         st.markdown("""
@@ -489,11 +476,12 @@ def main_bot_interface(selected_pairs):
             time.sleep(30)
             continue
         
-        # Wait 3 minutes
+        # Wait 1 minute (CHANGED FROM 3 MINUTES)
         with status_placeholder:
-            st.success(f"✅ Cycle #{cycle_count} complete. Waiting 3 minutes...")
+            st.success(f"✅ Cycle #{cycle_count} complete. Waiting 1 minute...")
         
-        for i in range(180):
+        # ⏱️ 1-MINUTE WAIT LOOP (was 180 seconds)
+        for i in range(60):
             if not st.session_state.running:
                 break
             
@@ -521,11 +509,15 @@ def main():
     if len(st.session_state.errors) > 20:
         st.session_state.errors = st.session_state.errors[-10:]
     
-    # Create sidebar menu
-    selected_pairs = create_sidebar()
-    
-    # Main interface
-    main_bot_interface(selected_pairs)
+    # Route to login or bot
+    if not st.session_state.logged_in:
+        login_page()
+    else:
+        # Create sidebar menu
+        selected_pairs = create_sidebar()
+        
+        # Main interface
+        main_bot_interface(selected_pairs)
 
 if __name__ == "__main__":
     main()
