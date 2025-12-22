@@ -2,11 +2,11 @@
 """
 ⚠️ CRITICAL DISCLAIMERS
 =======================
-1. NO OFFICIAL API - Uses web automation (Selenium) which is FRAGILE
-2. ACCOUNT BAN RISK - Violates Quotex Terms of Service
-3. NO GUARANTEED PROFITS - Educational purpose only
-4. SIMULATION MODE ENABLED by default (safe)
-5. Markets are inherently unpredictable
+1. NO EXTERNAL APIs - Uses synthetic data (works offline)
+2. NO TA-LIB - Pure Python indicators
+3. ACCOUNT BAN RISK - If you enable real trading
+4. SIMULATION MODE ONLY - Safe by default
+5. STREAMLIT CLOUD READY - No extra dependencies
 """
 
 import os
@@ -17,15 +17,8 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import pytz
 import streamlit as st
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 # =============================================================================
 # CONFIGURATION
@@ -37,12 +30,11 @@ class Config:
     SIMULATION_MODE = True  # ⚠️ SET TO FALSE AT YOUR OWN RISK
     BANGLADESH_TZ = 'Asia/Dhaka'
     MIN_ACCURACY = 60
-    SECRET_KEY = os.getenv('SECRET_KEY', 'quotex-bot-secret-streamlit')
 
 config = Config()
 
 # =============================================================================
-# MANUAL INDICATORS (No TA-Lib required)
+# PURE PYTHON INDICATORS (No TA-Lib)
 # =============================================================================
 def manual_rsi(close, period=14):
     delta = close.diff()
@@ -78,16 +70,38 @@ def manual_stoch(high, low, close, period=14):
     d = manual_sma(k, 3)
     return k, d
 
-def manual_adx(high, low, close, period=14):
-    plus_dm = high.diff()
-    minus_dm = low.diff()
-    tr1 = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
-    atr = tr1.rolling(window=period).mean()
-    plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
-    minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
-    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
-    adx = dx.rolling(window=period).mean()
-    return adx
+# =============================================================================
+# SYNTHETIC DATA GENERATOR (Replaces yfinance)
+# =============================================================================
+def generate_synthetic_data(days=5, seed=42):
+    """Generate realistic synthetic market data"""
+    periods = days * 24 * 60
+    dates = pd.date_range(
+        start=datetime.now() - timedelta(days=days), 
+        periods=periods, 
+        freq='1min', 
+        tz='UTC'
+    )
+    np.random.seed(seed)
+    
+    # Generate realistic price movements with some trend
+    returns = np.random.normal(0, 0.001, periods)
+    # Add small trend component
+    trend = np.linspace(0, 0.005, periods)
+    price = 1.0 + np.cumsum(returns + trend)
+    
+    # Add realistic volatility
+    high = price + np.abs(np.random.normal(0, 0.001, periods))
+    low = price - np.abs(np.random.normal(0, 0.001, periods))
+    
+    df = pd.DataFrame({
+        'Open': price,
+        'High': high,
+        'Low': low,
+        'Close': price,
+        'Volume': np.random.randint(100, 1000, periods)
+    }, index=dates)
+    return df
 
 # =============================================================================
 # DATABASE MANAGER
@@ -206,34 +220,6 @@ class SignalGenerator:
             'GBPAUD=X', 'EURAUD=X', 'USDMXN=X', 'USDZAR=X', 'USDTRY=X'
         ]
     
-    def fetch_historical_data(self, pair, days=5):
-        try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=days)
-            df = yf.download(pair, start=start_date, end=end_date, interval='1m', progress=False)
-            if df.empty:
-                return self.generate_synthetic_data(days)
-            return df
-        except Exception as e:
-            print(f"Error fetching {pair}: {e}, using synthetic data")
-            return self.generate_synthetic_data(days)
-    
-    def generate_synthetic_data(self, days):
-        periods = days * 24 * 60
-        dates = pd.date_range(start=datetime.now() - timedelta(days=days), 
-                             periods=periods, freq='1min', tz='UTC')
-        np.random.seed(42)
-        returns = np.random.normal(0, 0.001, periods)
-        price = 1.0 + np.cumsum(returns)
-        df = pd.DataFrame({
-            'Open': price,
-            'High': price + 0.001,
-            'Low': price - 0.001,
-            'Close': price,
-            'Volume': np.random.randint(100, 1000, periods)
-        }, index=dates)
-        return df
-    
     def calculate_indicators(self, df):
         df = df.copy()
         df['RSI'] = manual_rsi(df['Close'])
@@ -243,12 +229,11 @@ class SignalGenerator:
         df['MA_20'] = manual_sma(df['Close'], 20)
         df['MA_50'] = manual_sma(df['Close'], 50)
         df['Stoch_K'], df['Stoch_D'] = manual_stoch(df['High'], df['Low'], df['Close'])
-        df['ADX'] = manual_adx(df['High'], df['Low'], df['Close'])
         return df
     
     def generate_signal(self, pair):
         try:
-            df = self.fetch_historical_data(pair, config.ANALYSIS_LOOKBACK)
+            df = generate_synthetic_data(config.ANALYSIS_LOOKBACK)
             df = self.calculate_indicators(df)
             if len(df) < 50:
                 return None
@@ -336,28 +321,10 @@ class SignalGenerator:
 signal_gen = SignalGenerator()
 
 # =============================================================================
-# TRADING EXECUTOR
-# =============================================================================
-class TradingExecutor:
-    def __init__(self):
-        self.driver = None
-    
-    def execute_trade(self, signal):
-        if config.SIMULATION_MODE:
-            print(f"🎮 SIMULATION: {signal['pair']} - {signal['direction']} at {signal['accuracy']}%")
-            return {
-                'success': True,
-                'entry_price': round(np.random.uniform(0.9, 1.1), 4),
-                'trade_id': 'SIM_' + str(int(time.time()))
-            }
-        # Real execution code (DANGEROUS - removed for safety)
-        return {'success': False, 'error': 'Real trading disabled'}
-
-executor = TradingExecutor()
-
-# =============================================================================
 # BACKGROUND SCHEDULER
 # =============================================================================
+from apscheduler.schedulers.background import BackgroundScheduler
+
 scheduler = BackgroundScheduler()
 
 def generate_signals_job():
@@ -410,19 +377,20 @@ def dashboard_page():
     bd_time = datetime.now(pytz.timezone(config.BANGLADESH_TZ)).strftime('%Y-%m-%d %H:%M:%S')
     st.sidebar.info(f"🕐 Bangladesh Time: {bd_time}")
     
-    # Theme Toggle
-    if st.sidebar.button("🌓 Toggle Dark/Light Mode"):
-        current_theme = st.session_state.get('theme', 'dark')
-        new_theme = 'light' if current_theme == 'dark' else 'dark'
-        st.session_state['theme'] = new_theme
-        st.rerun()
-    
     # Performance Stats
     stats = db.get_performance_stats()
     col1, col2, col3 = st.sidebar.columns(3)
     col1.metric("Wins", stats['wins'])
     col2.metric("Losses", stats['losses'])
     col3.metric("Accuracy", f"{stats['accuracy']:.1f}%")
+    
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state['logged_in'] = False
+        st.rerun()
+    
+    # Refresh button
+    if st.button("🔄 Refresh Signals"):
+        st.rerun()
     
     # Main content
     tab1, tab2 = st.tabs(["Live Signals", "Trade History"])
@@ -431,21 +399,21 @@ def dashboard_page():
         st.subheader("📈 Live Signals (Next 24 Hours)")
         signals = db.get_recent_signals(50)
         if not signals.empty:
-            signals['color'] = signals['direction'].apply(lambda x: '🟢' if x == 'UP' else '🔴')
-            signals['action'] = signals['direction'].apply(lambda x: 'BUY' if x == 'UP' else 'SELL')
-            signals['time'] = pd.to_datetime(signals['generated_at']).dt.strftime('%H:%M:%S')
-            
-            # Display as formatted dataframe
             for _, signal in signals.iterrows():
                 with st.container():
                     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                    col1.markdown(f"**{signal['pair'].replace('=X', '')}**")
-                    col2.markdown(f"{signal['color']} {signal['action']}")
-                    col3.markdown(f"**{signal['accuracy']}%**")
-                    col4.markdown(f"*{signal['time']}*")
+                    pair_name = signal['pair'].replace('=X', '')
+                    direction = signal['direction']
+                    accuracy = signal['accuracy']
+                    time_str = pd.to_datetime(signal['generated_at']).strftime('%H:%M:%S')
+                    
+                    col1.markdown(f"**{pair_name}**")
+                    col2.markdown(f"{'🟢 UP' if direction == 'UP' else '🔴 DOWN'}")
+                    col3.markdown(f"**{accuracy}%**")
+                    col4.markdown(f"*{time_str}*")
                     st.divider()
         else:
-            st.info("Generating signals... please wait 30 seconds")
+            st.info("⏳ Generating signals... please wait 30 seconds")
     
     with tab2:
         st.subheader("📜 Trade History")
@@ -454,11 +422,12 @@ def dashboard_page():
                 'SELECT * FROM trades ORDER BY executed_at DESC LIMIT 100', conn
             )
         if not trades.empty:
-            trades['result_color'] = trades['result'].apply(
+            trades['symbol'] = trades['pair'].str.replace('=X', '')
+            trades['emoji'] = trades['result'].apply(
                 lambda x: '🟢' if x == 'WIN' else '🔴' if x == 'LOSS' else '⏳'
             )
             st.dataframe(
-                trades[['executed_at', 'pair', 'direction', 'entry_price', 'result', 'result_color']],
+                trades[['executed_at', 'symbol', 'direction', 'entry_price', 'result', 'emoji']],
                 hide_index=True,
                 use_container_width=True
             )
@@ -470,11 +439,7 @@ def main():
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
     
-    # Theme handling
-    if 'theme' not in st.session_state:
-        st.session_state['theme'] = 'dark'
-    
-    # Apply theme
+    # Set page config
     st.set_page_config(
         page_title="Quotex Trading Bot",
         page_icon="🤖",
