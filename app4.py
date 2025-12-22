@@ -1,140 +1,105 @@
 import os
 import sqlite3
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import pytz
 import streamlit as st
-from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+# --- 1. CONFIGURATION ---
 class Config:
-    DATABASE_PATH = 'data/trading_v5.db'
-    SIGNAL_INTERVAL = 1  # 1-minute candles
-    BANGLADESH_TZ = 'Asia/Dhaka' 
+    DB_PATH = 'trading_data.db'
+    TZ = 'Asia/Dhaka'
     ADMIN_USER = "admin"
     ADMIN_PASS = "1234"
 
-db_cfg = Config()
+# --- 2. LIVE BDT CLOCK ---
+# This pings the server every 1 second (1000ms) to update the clock and results
+st_autorefresh(interval=1000, key="bdt_clock_refresher")
 
-# =============================================================================
-# LIVE REFRESH - Keeps the BDT Clock running every 1 second
-# =============================================================================
-st_autorefresh(interval=1000, key="bdt_live_clock")
+# --- 3. DATABASE ENGINE ---
+def get_db():
+    conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False)
+    conn.execute('CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY, pair TEXT, direction TEXT, time TEXT, status TEXT DEFAULT "PENDING", result TEXT DEFAULT "WAITING")')
+    return conn
 
-# =============================================================================
-# DATABASE & LOGIC
-# =============================================================================
-class Database:
-    def __init__(self, db_path):
-        self.db_path = db_path
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self.init_db()
+def update_results(conn):
+    now_bdt = datetime.now(pytz.timezone(Config.TZ)).replace(tzinfo=None)
+    # If signal time + 1 min is in the past, settle it
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, time FROM signals WHERE status = 'PENDING'")
+    for row in cursor.fetchall():
+        sig_id, sig_time_str = row
+        sig_time = datetime.strptime(sig_time_str, '%H:%M:%S').replace(year=now_bdt.year, month=now_bdt.month, day=now_bdt.day)
+        if now_bdt >= (sig_time + timedelta(minutes=1)):
+            res = "WIN" if np.random.random() < 0.85 else "LOSS"
+            cursor.execute("UPDATE signals SET status = 'COMPLETED', result = ? WHERE id = ?", (res, sig_id))
+    conn.commit()
+
+# --- 4. MAIN INTERFACE ---
+def main():
+    conn = get_db()
+    update_results(conn)
     
-    def get_connection(self):
-        return sqlite3.connect(self.db_path, check_same_thread=False)
-
-    def init_db(self):
-        with self.get_connection() as conn:
-            conn.execute('PRAGMA journal_mode=WAL')
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS signals (
-                    id INTEGER PRIMARY KEY,
-                    pair TEXT,
-                    direction TEXT,
-                    accuracy REAL,
-                    generated_at TIMESTAMP,
-                    status TEXT DEFAULT 'PENDING',
-                    result TEXT DEFAULT 'WAITING'
-                )
-            ''')
-
-    def update_results(self):
-        """Settles trades after 1 minute has passed in BDT"""
-        bdt_now = datetime.now(pytz.timezone(db_cfg.BANGLADESH_TZ)).replace(tzinfo=None)
-        with self.get_connection() as conn:
-            conn.execute('''
-                UPDATE signals 
-                SET status = 'COMPLETED',
-                    result = CASE WHEN (ABS(RANDOM() % 100)) < 82 THEN 'WIN' ELSE 'LOSS' END
-                WHERE datetime(generated_at, '+1 minute') <= ? AND status = 'PENDING'
-            ''', (bdt_now.strftime('%Y-%m-%d %H:%M:%S'),))
-
-    def get_signals(self):
-        with self.get_connection() as conn:
-            return pd.read_sql_query('SELECT * FROM signals ORDER BY generated_at DESC', conn)
-
-# =============================================================================
-# UI DASHBOARD
-# =============================================================================
-def main_dashboard():
-    db = Database(db_cfg.DATABASE_PATH)
-    db.update_results()
-    
+    # --- Sidebar Menu ---
     with st.sidebar:
-        st.title("⚙️ SETTINGS")
-        theme = st.selectbox("Mode", ["Dark Mode", "Bright Mode"])
-        
-        if st.button("🚀 GENERATE 24H BDT DATA", type="primary", use_container_width=True):
-            generate_bulk_data(db)
-        
-        if st.button("🚪 LOGOUT", use_container_width=True):
-            st.session_state['auth'] = False
+        st.title("🎛️ Signal Menu")
+        mode = st.radio("Appearance", ["Dark", "Bright"])
+        if st.button("🚀 Generate 24H Signals"):
+            generate_signals(conn)
+        if st.button("🚪 Logout"):
+            st.session_state.logged_in = False
             st.rerun()
 
-    if theme == "Bright Mode":
+    # Theme Switching
+    if mode == "Bright":
         st.markdown("<style>.stApp {background-color: white; color: black;}</style>", unsafe_allow_html=True)
 
-    # --- TOP HEADER: BDT CLOCK ---
-    bdt_now = datetime.now(pytz.timezone(db_cfg.BANGLADESH_TZ))
-    c1, c2, c3 = st.columns(3)
-    c1.metric("🇧🇩 BDT CLOCK", bdt_now.strftime('%H:%M:%S'))
-    
-    df = db.get_signals()
-    completed = df[df['status'] == 'COMPLETED']
-    
-    if not completed.empty:
-        win_rate = (len(completed[completed['result'] == 'WIN']) / len(completed)) * 100
-        c2.metric("📈 OVERALL WIN %", f"{win_rate:.1f}%")
+    # Header & Live BDT Clock
+    bdt_now = datetime.now(pytz.timezone(Config.TZ))
+    col1, col2 = st.columns([2, 1])
+    col1.title("📈 Quotex BDT Bot")
+    col2.metric("Bangladesh Time", bdt_now.strftime('%H:%M:%S'))
+
+    # Stats: Win Ratio per 100 signals
+    df = pd.read_sql("SELECT * FROM signals WHERE status = 'COMPLETED'", conn)
+    if len(df) > 0:
+        total_signals = len(df)
+        wins = len(df[df.result == "WIN"])
+        st.subheader(f"📊 Win Ratio: {(wins/total_signals)*100:.2f}%")
         
-        if len(completed) >= 100:
-            last_100 = completed.head(100)
-            wr_100 = (len(last_100[last_100['result'] == 'WIN']))
-            c3.metric("🎯 LAST 100 WIN %", f"{wr_100}%")
+        if total_signals % 100 == 0:
+            st.success(f"Milestone Reached! Last 100 signals win rate: {(wins/total_signals)*100:.2f}%")
 
-    # --- TABS ---
-    t1, t2 = st.tabs(["🚀 FUTURE SIGNALS", "📜 TRADE LOGS"])
-    with t1:
-        st.dataframe(df[df['status'] == 'PENDING'].head(15), use_container_width=True)
-    with t2:
-        st.dataframe(completed.head(50), use_container_width=True)
+    # Tabs
+    tab1, tab2 = st.tabs(["Signals (1m Candle)", "History"])
+    with tab1:
+        pending = pd.read_sql("SELECT pair, direction, time FROM signals WHERE status = 'PENDING' ORDER BY time ASC LIMIT 10", conn)
+        st.table(pending)
+    with tab2:
+        st.dataframe(df.tail(50), use_container_width=True)
 
-def generate_bulk_data(db):
-    bdt_tz = pytz.timezone(db_cfg.BANGLADESH_TZ)
-    start = datetime.now(bdt_tz)
-    pairs = ['EURUSD-OTC', 'GBPUSD-OTC', 'USDJPY-OTC']
-    batch = []
-    for i in range(1440): # 24 hours
-        batch.append((np.random.choice(pairs), np.random.choice(['UP', 'DOWN']), 
-                     round(np.random.uniform(88, 98), 2), (start + timedelta(minutes=i)).strftime('%Y-%m-%d %H:%M:%S')))
-    with db.get_connection() as conn:
-        conn.execute("DELETE FROM signals")
-        conn.executemany('INSERT INTO signals (pair, direction, accuracy, generated_at) VALUES (?,?,?,?)', batch)
-    st.rerun()
+def generate_signals(conn):
+    conn.execute("DELETE FROM signals")
+    now = datetime.now(pytz.timezone(Config.TZ))
+    pairs = ["EURUSD-OTC", "GBPUSD-OTC", "USDJPY-OTC"]
+    for i in range(1, 480): # Approx 8 hours of 1-min signals
+        sig_time = (now + timedelta(minutes=i)).strftime('%H:%M:%S')
+        conn.execute("INSERT INTO signals (pair, direction, time) VALUES (?,?,?)", (np.random.choice(pairs), np.random.choice(["UP", "DOWN"]), sig_time))
+    conn.commit()
+    st.success("Signals Updated!")
 
-# =============================================================================
-# LOGIN
-# =============================================================================
-if 'auth' not in st.session_state: st.session_state['auth'] = False
-
-if not st.session_state['auth']:
-    st.title("🔒 BDT TERMINAL LOGIN")
-    u, p = st.text_input("User"), st.text_input("Pass", type="password")
+# --- 5. LOGIN PAGE ---
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+if not st.session_state.logged_in:
+    st.title("🔐 Login")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
     if st.button("Login"):
-        if u == db_cfg.ADMIN_USER and p == db_cfg.ADMIN_PASS:
-            st.session_state['auth'] = True
+        if u == Config.ADMIN_USER and p == Config.ADMIN_PASS:
+            st.session_state.logged_in = True
             st.rerun()
+        else: st.error("Wrong credentials")
 else:
-    main_dashboard()
+    main()
