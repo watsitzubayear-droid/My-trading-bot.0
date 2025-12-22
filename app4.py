@@ -2,10 +2,10 @@
 """
 ⚠️ CRITICAL DISCLAIMERS
 =======================
-1. PLAINTEXT PASSWORDS - For demo only (NEVER in production)
-2. NO EXTERNAL APIs - Synthetic data only
-3. NO TA-LIB - Pure Python indicators
-4. NO APSCHEDULER - Built-in threading only
+1. NO LOGIN/SECURITY - Open access (for demo only)
+2. PLAINTEXT STORAGE - Not for production
+3. NO EXTERNAL APIs - Synthetic data only
+4. SIMULATION MODE ONLY - Safe by default
 5. STREAMLIT CLOUD 100% COMPATIBLE
 """
 
@@ -98,7 +98,7 @@ def generate_synthetic_data(days=5, seed=42):
     return df
 
 # =============================================================================
-# DATABASE MANAGER (WITH PLAINTEXT PASSWORDS)
+# DATABASE MANAGER (NO USER TABLE)
 # =============================================================================
 class Database:
     def __init__(self, db_path):
@@ -108,14 +108,6 @@ class Database:
     def init_db(self):
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY,
-                    username TEXT UNIQUE,
-                    password TEXT,
-                    created_at TIMESTAMP
-                )
-            ''')
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS signals (
                     id INTEGER PRIMARY KEY,
@@ -139,20 +131,6 @@ class Database:
                 )
             ''')
             conn.commit()
-    
-    def add_user(self, username, password):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                'INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
-                (username, password, datetime.now(pytz.timezone(config.BANGLADESH_TZ)))
-            )
-            return cursor.lastrowid
-    
-    def get_user(self, username):
-        with sqlite3.connect(self.db_path) as conn:
-            return conn.execute(
-                'SELECT * FROM users WHERE username = ?', (username,)
-            ).fetchone()
     
     def add_signal(self, pair, direction, accuracy):
         with sqlite3.connect(self.db_path) as conn:
@@ -199,12 +177,12 @@ db = Database(config.DATABASE_PATH)
 class SignalGenerator:
     def __init__(self):
         self.pairs = [
-            'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X', 'USDCAD=X',
-            'EURJPY=X', 'GBPJPY=X', 'EURGBP=X', 'XAUUSD=X', 'BTC-USD',
-            'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'SOL-USD',
-            'DOGE-USD', 'DOT-USD', 'MATIC-USD', 'SHIB-USD', 'AVAX-USD',
-            'NZDUSD=X', 'USDCHF=X', 'GBPCHF=X', 'EURCHF=X', 'AUDJPY=X',
-            'GBPAUD=X', 'EURAUD=X', 'USDMXN=X', 'USDZAR=X', 'USDTRY=X'
+            'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD',
+            'EURJPY', 'GBPJPY', 'EURGBP', 'XAUUSD', 'BTCUSD',
+            'ETHUSD', 'BNBUSD', 'XRPUSD', 'ADAUSD', 'SOLUSD',
+            'DOGEUSD', 'DOTUSD', 'MATICUSD', 'SHIBUSDT', 'AVAXUSD',
+            'NZDUSD', 'USDCHF', 'GBPCHF', 'EURCHF', 'AUDJPY',
+            'GBPAUD', 'EURAUD', 'USDMXN', 'USDZAR', 'USDTRY'
         ]
     
     def calculate_indicators(self, df):
@@ -329,36 +307,9 @@ scheduler_thread.start()
 # =============================================================================
 # STREAMLIT UI
 # =============================================================================
-def login_page():
-    st.title("🤖 Quotex Trading Bot")
-    st.warning("⚠️ DEMO ACCOUNT ONLY - HIGH RISK - PLAINTEXT PASSWORDS")
-    
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-        
-        if submitted:
-            user_data = db.get_user(username)
-            if user_data and user_data[2] == password:  # Plain text comparison
-                st.session_state['user'] = {'id': user_data[0], 'username': user_data[1]}
-                st.session_state['logged_in'] = True
-                st.rerun()
-            else:
-                st.error("❌ Invalid credentials")
-    
-    with st.form("register_form"):
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type="password")
-        if st.form_submit_button("Register"):
-            try:
-                db.add_user(new_user, new_pass)  # Store plain text
-                st.success("✅ Registration successful! Please login.")
-            except sqlite3.IntegrityError:
-                st.error("❌ User already exists")
-
 def dashboard_page():
     st.title("📊 Quotex Trading Bot Dashboard")
+    st.warning("⚠️ SIMULATION MODE ONLY - NO REAL TRADES")
     
     # Bangladesh Time Clock
     bd_time = datetime.now(pytz.timezone(config.BANGLADESH_TZ)).strftime('%Y-%m-%d %H:%M:%S')
@@ -370,10 +321,6 @@ def dashboard_page():
     col1.metric("🟢 Wins", stats['wins'])
     col2.metric("🔴 Losses", stats['losses'])
     col3.metric("📊 Accuracy", f"{stats['accuracy']:.1f}%")
-    
-    if st.sidebar.button("🚪 Logout"):
-        st.session_state['logged_in'] = False
-        st.rerun()
     
     # Refresh button
     if st.button("🔄 Refresh Signals"):
@@ -389,7 +336,7 @@ def dashboard_page():
             for _, signal in signals.iterrows():
                 with st.container():
                     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                    pair_name = signal['pair'].replace('=X', '')
+                    pair_name = signal['pair']
                     direction = signal['direction']
                     accuracy = signal['accuracy']
                     time_str = pd.to_datetime(signal['generated_at']).strftime('%H:%M:%S')
@@ -409,7 +356,7 @@ def dashboard_page():
                 'SELECT * FROM trades ORDER BY executed_at DESC LIMIT 100', conn
             )
         if not trades.empty:
-            trades['symbol'] = trades['pair'].str.replace('=X', '')
+            trades['symbol'] = trades['pair']
             trades['emoji'] = trades['result'].apply(
                 lambda x: '🟢' if x == 'WIN' else '🔴' if x == 'LOSS' else '⏳'
             )
@@ -422,10 +369,6 @@ def dashboard_page():
             st.info("No trade history yet")
 
 def main():
-    # Initialize session state
-    if 'logged_in' not in st.session_state:
-        st.session_state['logged_in'] = False
-    
     # Set page config
     st.set_page_config(
         page_title="Quotex Trading Bot",
@@ -434,10 +377,8 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    if not st.session_state['logged_in']:
-        login_page()
-    else:
-        dashboard_page()
+    # Always show dashboard directly
+    dashboard_page()
 
 if __name__ == '__main__':
     main()
