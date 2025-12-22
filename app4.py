@@ -13,7 +13,7 @@ from streamlit_autorefresh import st_autorefresh
 # =============================================================================
 class Config:
     DATABASE_PATH = 'data/trading_v5.db'
-    SIGNAL_INTERVAL = 1  
+    SIGNAL_INTERVAL = 1  # 1 Minute candle logic
     BANGLADESH_TZ = 'Asia/Dhaka'
     ADMIN_USER = "admin"
     ADMIN_PASS = "1234"
@@ -21,10 +21,10 @@ class Config:
 db_cfg = Config()
 
 # =============================================================================
-# LIVE REFRESH (Running Clock)
+# LIVE REFRESH & CLOCK
 # =============================================================================
-# Refreshes every 1 second to keep the clock moving
-st_autorefresh(interval=1000, key="live_clock")
+# This component pings the server every 1000ms (1 second) to update the clock
+st_autorefresh(interval=1000, key="live_clock_running")
 
 # =============================================================================
 # DATABASE ENGINE
@@ -54,14 +54,13 @@ class Database:
             ''')
 
     def update_live_results(self):
-        """Automatically settles trades after 1 minute"""
+        """Settles trades as soon as 1 minute passes"""
         now = datetime.now(pytz.timezone(db_cfg.BANGLADESH_TZ)).replace(tzinfo=None)
         with self.get_connection() as conn:
-            # If 1 min has passed since 'generated_at', mark as WIN/LOSS
             conn.execute('''
                 UPDATE signals 
                 SET status = 'COMPLETED',
-                    result = CASE WHEN (ABS(RANDOM() % 100)) < 85 THEN 'WIN' ELSE 'LOSS' END
+                    result = CASE WHEN (ABS(RANDOM() % 100)) < 82 THEN 'WIN' ELSE 'LOSS' END
                 WHERE datetime(generated_at, '+1 minute') <= ? AND status = 'PENDING'
             ''', (now.strftime('%Y-%m-%d %H:%M:%S'),))
 
@@ -70,111 +69,103 @@ class Database:
             return pd.read_sql_query('SELECT * FROM signals ORDER BY generated_at DESC', conn)
 
 # =============================================================================
-# DASHBOARD
+# DASHBOARD UI
 # =============================================================================
 def main_dashboard():
     db = Database(db_cfg.DATABASE_PATH)
     db.update_live_results()
     
-    # --- SIDEBAR MENU ---
+    # --- MENU & THEME ---
     with st.sidebar:
-        st.title("🎛️ BOT MENU")
-        theme = st.selectbox("Appearance Mode", ["Dark Mode", "Bright Mode"])
+        st.title("🛡️ BOT MENU")
+        theme_mode = st.radio("Display Mode", ["Dark Mode", "Bright Mode"])
         
         st.divider()
-        if st.button("🚀 GENERATE 24H SIGNALS (1M)", type="primary", use_container_width=True):
-            generate_24h_data(db)
+        if st.button("🚀 GENERATE 24H DATA", type="primary", use_container_width=True):
+            generate_bulk_signals(db)
             
-        if st.button("🗑️ RESET DATABASE", use_container_width=True):
+        if st.button("🗑️ CLEAR ALL DATA", use_container_width=True):
             with db.get_connection() as conn:
                 conn.execute("DELETE FROM signals")
             st.rerun()
 
         if st.button("🚪 LOGOUT", use_container_width=True):
-            st.session_state['logged_in'] = False
+            st.session_state['auth_status'] = False
             st.rerun()
 
-    # Apply Theme Styling
-    if theme == "Bright Mode":
+    # Apply CSS for Bright Mode if selected
+    if theme_mode == "Bright Mode":
         st.markdown("<style>.stApp {background-color: white; color: black;}</style>", unsafe_allow_html=True)
 
-    # --- TOP HEADER: LIVE CLOCK ---
+    # --- TOP METRICS & LIVE CLOCK ---
     now_bd = datetime.now(pytz.timezone(db_cfg.BANGLADESH_TZ))
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("🇧🇩 BANGLADESH TIME", now_bd.strftime('%H:%M:%S'))
+    col_clock, col_win, col_recent = st.columns(3)
+    col_clock.metric("🇧🇩 Bangladesh Time", now_bd.strftime('%H:%M:%S'))
     
-    # --- CALCULATE WIN RATIO ---
     df = db.get_signals()
     completed = df[df['status'] == 'COMPLETED']
     
     if not completed.empty:
-        total_wins = len(completed[completed['result'] == 'WIN'])
-        win_ratio = (total_wins / len(completed)) * 100
-        with col2:
-            st.metric("📊 OVERALL WIN RATE", f"{win_ratio:.2f}%")
+        total_win_rate = (len(completed[completed['result'] == 'WIN']) / len(completed)) * 100
+        col_win.metric("📈 Overall Win Rate", f"{total_win_rate:.1f}%")
         
-        # Win ratio for last 100
         if len(completed) >= 100:
             last_100 = completed.head(100)
-            l100_wins = len(last_100[last_100['result'] == 'WIN'])
-            with col3:
-                st.metric("🎯 LAST 100 WIN RATE", f"{l100_wins}%")
+            l100_wins = (len(last_100[last_100['result'] == 'WIN']) / 100) * 100
+            col_recent.metric("🎯 Last 100 Wins", f"{l100_wins}%")
 
-    # --- TABS FOR SIGNALS ---
-    tab1, tab2 = st.tabs(["🚀 FUTURE TRADES", "📜 SIGNAL HISTORY"])
+    # --- SIGNAL DISPLAYS ---
+    t1, t2 = st.tabs(["🚀 Current Signals", "📜 History"])
     
-    with tab1:
-        # Show pending signals for the next 10 minutes
-        pending = df[df['status'] == 'PENDING'].sort_values('generated_at', ascending=True)
-        if not pending.empty:
-            st.dataframe(pending[['pair', 'direction', 'accuracy', 'generated_at']].head(15), use_container_width=True)
+    with t1:
+        pending = df[df['status'] == 'PENDING'].sort_values('generated_at').head(15)
+        if pending.empty:
+            st.warning("No signals available. Please generate data from the sidebar.")
         else:
-            st.info("No signals. Use the sidebar to generate 24H data.")
+            st.dataframe(pending[['pair', 'direction', 'accuracy', 'generated_at']], use_container_width=True)
 
-    with tab2:
-        if not completed.empty:
+    with t2:
+        if completed.empty:
+            st.info("Signals will move here once the 1-minute trade expires.")
+        else:
             st.dataframe(completed[['pair', 'direction', 'result', 'generated_at']].head(50), use_container_width=True)
-        else:
-            st.info("History will appear after trades expire (1 min).")
 
-def generate_24h_data(db):
+def generate_bulk_signals(db):
     start = datetime.now(pytz.timezone(db_cfg.BANGLADESH_TZ))
-    pairs = ['EURUSD-OTC', 'GBPUSD-OTC', 'USDJPY-OTC', 'XAUUSD-OTC', 'BTCUSD-OTC']
+    pairs = ['EURUSD-OTC', 'GBPUSD-OTC', 'USDJPY-OTC', 'AUDUSD-OTC']
     batch = []
     
-    # Generate 1440 signals (24 hours * 60 minutes)
-    for i in range(1440):
+    for i in range(1440): # 1440 mins = 24 hours
         sig_time = start + timedelta(minutes=i)
         batch.append((
             np.random.choice(pairs),
             np.random.choice(['UP', 'DOWN']),
-            round(np.random.uniform(88, 98), 2),
+            round(np.random.uniform(85, 99), 2),
             sig_time.strftime('%Y-%m-%d %H:%M:%S')
         ))
     
     with db.get_connection() as conn:
-        conn.execute("DELETE FROM signals") # Clear old data
+        conn.execute("DELETE FROM signals")
         conn.executemany('INSERT INTO signals (pair, direction, accuracy, generated_at) VALUES (?,?,?,?)', batch)
-    st.success("24 Hours of 1M signals generated!")
+    st.success("24 Hours of 1M signals generated successfully!")
     st.rerun()
 
 # =============================================================================
-# LOGIN PAGE
+# AUTHENTICATION
 # =============================================================================
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
+if 'auth_status' not in st.session_state:
+    st.session_state['auth_status'] = False
 
-if not st.session_state['logged_in']:
-    st.title("🛡️ QUOTEX SIGNAL BOT LOGIN")
-    user = st.text_input("Username")
-    passw = st.text_input("Password", type="password")
-    if st.button("ENTER DASHBOARD"):
-        if user == db_cfg.ADMIN_USER and passw == db_cfg.ADMIN_PASS:
-            st.session_state['logged_in'] = True
+if not st.session_state['auth_status']:
+    st.title("🔒 Terminal Login")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+    if st.button("Access Dashboard"):
+        if u == db_cfg.ADMIN_USER and p == db_cfg.ADMIN_PASS:
+            st.session_state['auth_status'] = True
             st.rerun()
         else:
-            st.error("Access Denied")
+            st.error("Invalid Username or Password")
 else:
     main_dashboard()
