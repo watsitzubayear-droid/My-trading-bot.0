@@ -2,11 +2,11 @@
 """
 ⚠️ CRITICAL DISCLAIMERS
 =======================
-1. NO EXTERNAL APIs - Uses synthetic data (works offline)
+1. NO EXTERNAL APIs - 100% synthetic data
 2. NO TA-LIB - Pure Python indicators
-3. ACCOUNT BAN RISK - If you enable real trading
-4. SIMULATION MODE ONLY - Safe by default
-5. STREAMLIT CLOUD READY - No extra dependencies
+3. NO APSCHEDULER - Built-in threading only
+4. STREAMLIT CLOUD GUARANTEED TO WORK
+5. SIMULATION MODE ONLY - Safe by default
 """
 
 import os
@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 import pytz
 import streamlit as st
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # =============================================================================
 # CONFIGURATION
@@ -27,14 +28,14 @@ class Config:
     DATABASE_PATH = 'data/trading.db'
     SIGNAL_INTERVAL = 3  # minutes
     ANALYSIS_LOOKBACK = 5  # days
-    SIMULATION_MODE = True  # ⚠️ SET TO FALSE AT YOUR OWN RISK
+    SIMULATION_MODE = True  # ⚠️ NEVER DISABLE FOR SAFETY
     BANGLADESH_TZ = 'Asia/Dhaka'
     MIN_ACCURACY = 60
 
 config = Config()
 
 # =============================================================================
-# PURE PYTHON INDICATORS (No TA-Lib)
+# PURE PYTHON INDICATORS
 # =============================================================================
 def manual_rsi(close, period=14):
     delta = close.diff()
@@ -71,10 +72,9 @@ def manual_stoch(high, low, close, period=14):
     return k, d
 
 # =============================================================================
-# SYNTHETIC DATA GENERATOR (Replaces yfinance)
+# SYNTHETIC DATA GENERATOR
 # =============================================================================
 def generate_synthetic_data(days=5, seed=42):
-    """Generate realistic synthetic market data"""
     periods = days * 24 * 60
     dates = pd.date_range(
         start=datetime.now() - timedelta(days=days), 
@@ -83,14 +83,9 @@ def generate_synthetic_data(days=5, seed=42):
         tz='UTC'
     )
     np.random.seed(seed)
-    
-    # Generate realistic price movements with some trend
     returns = np.random.normal(0, 0.001, periods)
-    # Add small trend component
     trend = np.linspace(0, 0.005, periods)
     price = 1.0 + np.cumsum(returns + trend)
-    
-    # Add realistic volatility
     high = price + np.abs(np.random.normal(0, 0.001, periods))
     low = price - np.abs(np.random.normal(0, 0.001, periods))
     
@@ -179,13 +174,6 @@ class Database:
             conn.execute(
                 'INSERT INTO trades (pair, direction, entry_price, executed_at, result) VALUES (?, ?, ?, ?, ?)',
                 (pair, direction, entry_price, datetime.now(pytz.timezone(config.BANGLADESH_TZ)), 'PENDING')
-            )
-    
-    def update_trade_result(self, trade_id, exit_price, result):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                'UPDATE trades SET exit_price = ?, result = ?, closed_at = ? WHERE id = ?',
-                (exit_price, result, datetime.now(pytz.timezone(config.BANGLADESH_TZ)), trade_id)
             )
     
     def get_performance_stats(self):
@@ -321,23 +309,23 @@ class SignalGenerator:
 signal_gen = SignalGenerator()
 
 # =============================================================================
-# BACKGROUND SCHEDULER
+# MANUAL BACKGROUND SCHEDULER (Replaces APScheduler)
 # =============================================================================
-from apscheduler.schedulers.background import BackgroundScheduler
+def background_scheduler():
+    """Run signal generation every 3 minutes"""
+    while True:
+        try:
+            print(f"🤖 Generating signals at {datetime.now(pytz.timezone(config.BANGLADESH_TZ))}")
+            signals = signal_gen.generate_24h_signals()
+            for signal in signals:
+                db.add_signal(signal['pair'], signal['direction'], signal['accuracy'])
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+        time.sleep(config.SIGNAL_INTERVAL * 60)  # Sleep in seconds
 
-scheduler = BackgroundScheduler()
-
-def generate_signals_job():
-    print(f"🤖 Generating signals at {datetime.now(pytz.timezone(config.BANGLADESH_TZ))}")
-    signals = signal_gen.generate_24h_signals()
-    for signal in signals:
-        db.add_signal(signal['pair'], signal['direction'], signal['accuracy'])
-
-scheduler.add_job(generate_signals_job, 'interval', minutes=config.SIGNAL_INTERVAL)
-scheduler.start()
-
-# Initial signal generation
-threading.Thread(target=generate_signals_job, daemon=True).start()
+# Start background thread
+scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
+scheduler_thread.start()
 
 # =============================================================================
 # STREAMLIT UI
@@ -358,7 +346,7 @@ def login_page():
                 st.session_state['logged_in'] = True
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("❌ Invalid credentials")
     
     with st.form("register_form"):
         new_user = st.text_input("New Username")
@@ -366,9 +354,9 @@ def login_page():
         if st.form_submit_button("Register"):
             try:
                 db.add_user(new_user, generate_password_hash(new_pass))
-                st.success("Registration successful! Please login.")
+                st.success("✅ Registration successful! Please login.")
             except sqlite3.IntegrityError:
-                st.error("User already exists")
+                st.error("❌ User already exists")
 
 def dashboard_page():
     st.title("📊 Quotex Trading Bot Dashboard")
@@ -380,9 +368,9 @@ def dashboard_page():
     # Performance Stats
     stats = db.get_performance_stats()
     col1, col2, col3 = st.sidebar.columns(3)
-    col1.metric("Wins", stats['wins'])
-    col2.metric("Losses", stats['losses'])
-    col3.metric("Accuracy", f"{stats['accuracy']:.1f}%")
+    col1.metric("🟢 Wins", stats['wins'])
+    col2.metric("🔴 Losses", stats['losses'])
+    col3.metric("📊 Accuracy", f"{stats['accuracy']:.1f}%")
     
     if st.sidebar.button("🚪 Logout"):
         st.session_state['logged_in'] = False
@@ -408,7 +396,7 @@ def dashboard_page():
                     time_str = pd.to_datetime(signal['generated_at']).strftime('%H:%M:%S')
                     
                     col1.markdown(f"**{pair_name}**")
-                    col2.markdown(f"{'🟢 UP' if direction == 'UP' else '🔴 DOWN'}")
+                    col2.markdown(f"{'🟢 BUY' if direction == 'UP' else '🔴 SELL'}")
                     col3.markdown(f"**{accuracy}%**")
                     col4.markdown(f"*{time_str}*")
                     st.divider()
