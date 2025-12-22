@@ -2,11 +2,11 @@
 """
 ⚠️ CRITICAL DISCLAIMERS
 =======================
-1. NO EXTERNAL APIs - 100% synthetic data
-2. NO TA-LIB - Pure Python indicators
-3. NO APSCHEDULER - Built-in threading only
-4. STREAMLIT CLOUD GUARANTEED TO WORK
-5. SIMULATION MODE ONLY - Safe by default
+1. PLAINTEXT PASSWORDS - For demo only (NEVER in production)
+2. NO EXTERNAL APIs - Synthetic data only
+3. NO TA-LIB - Pure Python indicators
+4. NO APSCHEDULER - Built-in threading only
+5. STREAMLIT CLOUD 100% COMPATIBLE
 """
 
 import os
@@ -19,7 +19,6 @@ import pandas as pd
 import numpy as np
 import pytz
 import streamlit as st
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # =============================================================================
 # CONFIGURATION
@@ -99,7 +98,7 @@ def generate_synthetic_data(days=5, seed=42):
     return df
 
 # =============================================================================
-# DATABASE MANAGER
+# DATABASE MANAGER (WITH PLAINTEXT PASSWORDS)
 # =============================================================================
 class Database:
     def __init__(self, db_path):
@@ -113,7 +112,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE,
-                    password_hash TEXT,
+                    password TEXT,
                     created_at TIMESTAMP
                 )
             ''')
@@ -141,11 +140,11 @@ class Database:
             ''')
             conn.commit()
     
-    def add_user(self, username, password_hash):
+    def add_user(self, username, password):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
-                'INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)',
-                (username, password_hash, datetime.now(pytz.timezone(config.BANGLADESH_TZ)))
+                'INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
+                (username, password, datetime.now(pytz.timezone(config.BANGLADESH_TZ)))
             )
             return cursor.lastrowid
     
@@ -309,7 +308,7 @@ class SignalGenerator:
 signal_gen = SignalGenerator()
 
 # =============================================================================
-# MANUAL BACKGROUND SCHEDULER (Replaces APScheduler)
+# MANUAL BACKGROUND SCHEDULER
 # =============================================================================
 def background_scheduler():
     """Run signal generation every 3 minutes"""
@@ -321,7 +320,7 @@ def background_scheduler():
                 db.add_signal(signal['pair'], signal['direction'], signal['accuracy'])
         except Exception as e:
             print(f"Scheduler error: {e}")
-        time.sleep(config.SIGNAL_INTERVAL * 60)  # Sleep in seconds
+        time.sleep(config.SIGNAL_INTERVAL * 60)
 
 # Start background thread
 scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
@@ -332,7 +331,7 @@ scheduler_thread.start()
 # =============================================================================
 def login_page():
     st.title("🤖 Quotex Trading Bot")
-    st.warning("⚠️ DEMO ACCOUNT ONLY - HIGH RISK - SIMULATION MODE")
+    st.warning("⚠️ DEMO ACCOUNT ONLY - HIGH RISK - PLAINTEXT PASSWORDS")
     
     with st.form("login_form"):
         username = st.text_input("Username")
@@ -341,7 +340,7 @@ def login_page():
         
         if submitted:
             user_data = db.get_user(username)
-            if user_data and check_password_hash(user_data[2], password):
+            if user_data and user_data[2] == password:  # Plain text comparison
                 st.session_state['user'] = {'id': user_data[0], 'username': user_data[1]}
                 st.session_state['logged_in'] = True
                 st.rerun()
@@ -353,7 +352,7 @@ def login_page():
         new_pass = st.text_input("New Password", type="password")
         if st.form_submit_button("Register"):
             try:
-                db.add_user(new_user, generate_password_hash(new_pass))
+                db.add_user(new_user, new_pass)  # Store plain text
                 st.success("✅ Registration successful! Please login.")
             except sqlite3.IntegrityError:
                 st.error("❌ User already exists")
