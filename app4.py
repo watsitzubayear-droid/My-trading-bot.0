@@ -2,10 +2,10 @@
 """
 ⚠️ CRITICAL DISCLAIMERS
 =======================
-1. NO LOGIN/SECURITY - Open access (for demo only)
-2. PLAINTEXT STORAGE - Not for production
-3. NO EXTERNAL APIs - Synthetic data only
-4. SIMULATION MODE ONLY - Safe by default
+1. MANUAL SIGNAL GENERATION - Click button to generate
+2. NO LOGIN REQUIRED - Open access
+3. PLAINTEXT STORAGE - Not for production
+4. BATCH GENERATION - 50 signals per click
 5. STREAMLIT CLOUD 100% COMPATIBLE
 """
 
@@ -25,13 +25,27 @@ import streamlit as st
 # =============================================================================
 class Config:
     DATABASE_PATH = 'data/trading.db'
-    SIGNAL_INTERVAL = 3  # minutes
-    ANALYSIS_LOOKBACK = 5  # days
+    SIGNAL_INTERVAL = 3  # minutes between signals
+    ANALYSIS_LOOKBACK = 5  # days of historical data
     SIMULATION_MODE = True  # ⚠️ NEVER DISABLE FOR SAFETY
     BANGLADESH_TZ = 'Asia/Dhaka'
     MIN_ACCURACY = 60
+    SIGNALS_PER_BATCH = 50
+    MAX_TOTAL_SIGNALS = 480  # 24 hours worth (24*60/3)
 
 config = Config()
+
+# =============================================================================
+# SESSION STATE INITIALIZATION
+# =============================================================================
+def init_session_state():
+    """Initialize all session state variables"""
+    if 'total_signals_generated' not in st.session_state:
+        st.session_state['total_signals_generated'] = 0
+    if 'last_batch_number' not in st.session_state:
+        st.session_state['last_batch_number'] = 0
+    if 'signals_generated' not in st.session_state:
+        st.session_state['signals_generated'] = False
 
 # =============================================================================
 # PURE PYTHON INDICATORS
@@ -74,6 +88,7 @@ def manual_stoch(high, low, close, period=14):
 # SYNTHETIC DATA GENERATOR
 # =============================================================================
 def generate_synthetic_data(days=5, seed=42):
+    """Generate realistic synthetic market data"""
     periods = days * 24 * 60
     dates = pd.date_range(
         start=datetime.now() - timedelta(days=days), 
@@ -82,9 +97,13 @@ def generate_synthetic_data(days=5, seed=42):
         tz='UTC'
     )
     np.random.seed(seed)
+    
+    # Generate realistic price movements with trend
     returns = np.random.normal(0, 0.001, periods)
     trend = np.linspace(0, 0.005, periods)
     price = 1.0 + np.cumsum(returns + trend)
+    
+    # Add realistic volatility
     high = price + np.abs(np.random.normal(0, 0.001, periods))
     low = price - np.abs(np.random.normal(0, 0.001, periods))
     
@@ -98,7 +117,7 @@ def generate_synthetic_data(days=5, seed=42):
     return df
 
 # =============================================================================
-# DATABASE MANAGER (NO USER TABLE)
+# DATABASE MANAGER
 # =============================================================================
 class Database:
     def __init__(self, db_path):
@@ -115,6 +134,7 @@ class Database:
                     direction TEXT,
                     accuracy REAL,
                     generated_at TIMESTAMP,
+                    batch_number INTEGER,
                     executed BOOLEAN DEFAULT 0
                 )
             ''')
@@ -132,14 +152,15 @@ class Database:
             ''')
             conn.commit()
     
-    def add_signal(self, pair, direction, accuracy):
+    def add_signal_with_time(self, pair, direction, accuracy, timestamp, batch_number):
+        """Add signal with specific timestamp and batch number"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                'INSERT INTO signals (pair, direction, accuracy, generated_at) VALUES (?, ?, ?, ?)',
-                (pair, direction, accuracy, datetime.now(pytz.timezone(config.BANGLADESH_TZ)))
+                'INSERT INTO signals (pair, direction, accuracy, generated_at, batch_number) VALUES (?, ?, ?, ?, ?)',
+                (pair, direction, accuracy, timestamp, batch_number)
             )
     
-    def get_recent_signals(self, limit=100):
+    def get_recent_signals(self, limit=500):
         with sqlite3.connect(self.db_path) as conn:
             return pd.read_sql_query(
                 'SELECT * FROM signals ORDER BY generated_at DESC LIMIT ?',
@@ -168,6 +189,12 @@ class Database:
                 'losses': stats[2] or 0,
                 'accuracy': (stats[1] / stats[0] * 100) if stats[0] > 0 else 0
             }
+    
+    def get_max_batch_number(self):
+        """Get the highest batch number in the database"""
+        with sqlite3.connect(self.db_path) as conn:
+            result = conn.execute('SELECT MAX(batch_number) FROM signals').fetchone()
+            return result[0] if result[0] is not None else 0
 
 db = Database(config.DATABASE_PATH)
 
@@ -274,35 +301,69 @@ class SignalGenerator:
             return 50
     
     def generate_24h_signals(self):
+        """Generate signals for all pairs"""
         signals = []
         for pair in self.pairs:
             signal = self.generate_signal(pair)
             if signal:
                 signals.append(signal)
         signals.sort(key=lambda x: x['accuracy'], reverse=True)
-        max_signals = (24 * 60) // config.SIGNAL_INTERVAL
-        return signals[:max_signals]
+        return signals
 
 signal_gen = SignalGenerator()
 
 # =============================================================================
-# MANUAL BACKGROUND SCHEDULER
+# BATCH SIGNAL GENERATION
 # =============================================================================
-def background_scheduler():
-    """Run signal generation every 3 minutes"""
-    while True:
-        try:
-            print(f"🤖 Generating signals at {datetime.now(pytz.timezone(config.BANGLADESH_TZ))}")
-            signals = signal_gen.generate_24h_signals()
-            for signal in signals:
-                db.add_signal(signal['pair'], signal['direction'], signal['accuracy'])
-        except Exception as e:
-            print(f"Scheduler error: {e}")
-        time.sleep(config.SIGNAL_INTERVAL * 60)
-
-# Start background thread
-scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
-scheduler_thread.start()
+def generate_signal_batch():
+    """
+    Generate next batch of 50 signals with future timestamps
+    Returns: Number of signals generated
+    """
+    # Check if we've reached the limit
+    if st.session_state['total_signals_generated'] >= config.MAX_TOTAL_SIGNALS:
+        return -1  # Indicates limit reached
+    
+    # Get the next batch number
+    batch_number = st.session_state['last_batch_number'] + 1
+    
+    # Calculate start time for this batch
+    if batch_number == 1:
+        # First batch starts now
+        start_time = datetime.now(pytz.timezone(config.BANGLADESH_TZ))
+    else:
+        # Subsequent batches start after previous batch
+        minutes_offset = config.SIGNALS_PER_BATCH * config.SIGNAL_INTERVAL * (batch_number - 1)
+        start_time = datetime.now(pytz.timezone(config.BANGLADESH_TZ)) + timedelta(minutes=minutes_offset)
+    
+    # Generate signals
+    all_signals = signal_gen.generate_24h_signals()
+    
+    # Take the next 50 signals
+    start_idx = st.session_state['total_signals_generated']
+    end_idx = start_idx + config.SIGNALS_PER_BATCH
+    batch_signals = all_signals[start_idx:end_idx]
+    
+    if not batch_signals:
+        return 0
+    
+    # Store signals with incremental timestamps
+    for i, signal in enumerate(batch_signals):
+        signal_time = start_time + timedelta(minutes=config.SIGNAL_INTERVAL * i)
+        db.add_signal_with_time(
+            signal['pair'], 
+            signal['direction'], 
+            signal['accuracy'], 
+            signal_time,
+            batch_number
+        )
+    
+    # Update session state
+    st.session_state['total_signals_generated'] += len(batch_signals)
+    st.session_state['last_batch_number'] = batch_number
+    st.session_state['signals_generated'] = True
+    
+    return len(batch_signals)
 
 # =============================================================================
 # STREAMLIT UI
@@ -322,8 +383,28 @@ def dashboard_page():
     col2.metric("🔴 Losses", stats['losses'])
     col3.metric("📊 Accuracy", f"{stats['accuracy']:.1f}%")
     
+    # Progress indicator
+    progress = st.session_state['total_signals_generated'] / config.MAX_TOTAL_SIGNALS
+    st.sidebar.progress(progress, text=f"Progress: {st.session_state['total_signals_generated']}/{config.MAX_TOTAL_SIGNALS} signals")
+    
+    # Generate button
+    if st.session_state['total_signals_generated'] < config.MAX_TOTAL_SIGNALS:
+        if st.button("🚀 Generate Next 50 Signals", type="primary", use_container_width=True):
+            with st.spinner("Generating signals..."):
+                count = generate_signal_batch()
+                if count > 0:
+                    st.success(f"✅ Generated {count} signals (Batch #{st.session_state['last_batch_number']})")
+                    time.sleep(1)
+                    st.rerun()
+                elif count == -1:
+                    st.warning("⚠️ Maximum 24-hour signal limit reached!")
+                else:
+                    st.warning("⚠️ No signals generated in this batch")
+    else:
+        st.sidebar.success("🎉 All 24-hour signals generated!")
+    
     # Refresh button
-    if st.button("🔄 Refresh Signals"):
+    if st.button("🔄 Refresh Display", use_container_width=True):
         st.rerun()
     
     # Main content
@@ -331,23 +412,41 @@ def dashboard_page():
     
     with tab1:
         st.subheader("📈 Live Signals (Next 24 Hours)")
-        signals = db.get_recent_signals(50)
-        if not signals.empty:
-            for _, signal in signals.iterrows():
-                with st.container():
-                    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                    pair_name = signal['pair']
-                    direction = signal['direction']
-                    accuracy = signal['accuracy']
-                    time_str = pd.to_datetime(signal['generated_at']).strftime('%H:%M:%S')
-                    
-                    col1.markdown(f"**{pair_name}**")
-                    col2.markdown(f"{'🟢 BUY' if direction == 'UP' else '🔴 SELL'}")
-                    col3.markdown(f"**{accuracy}%**")
-                    col4.markdown(f"*{time_str}*")
-                    st.divider()
+        
+        # Show generation status
+        if not st.session_state['signals_generated']:
+            st.info("👆 Click 'Generate Next 50 Signals' to start")
         else:
-            st.info("⏳ Generating signals... please wait 30 seconds")
+            signals = db.get_recent_signals(500)
+            if not signals.empty:
+                # Show batch info
+                batch_info = signals.groupby('batch_number').agg({
+                    'id': 'count',
+                    'generated_at': ['min', 'max']
+                }).reset_index()
+                
+                for _, signal in signals.head(100).iterrows():
+                    with st.container():
+                        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                        pair_name = signal['pair']
+                        direction = signal['direction']
+                        accuracy = signal['accuracy']
+                        time_str = pd.to_datetime(signal['generated_at']).strftime('%Y-%m-%d %H:%M')
+                        
+                        col1.markdown(f"**{pair_name}**")
+                        col2.markdown(f"{'🟢 BUY' if direction == 'UP' else '🔴 SELL'}")
+                        col3.markdown(f"**{accuracy}%**")
+                        col4.markdown(f"*{time_str}*")
+                        st.divider()
+                
+                # Show remaining signals count
+                remaining = config.MAX_TOTAL_SIGNALS - len(signals)
+                if remaining > 0:
+                    st.info(f"⏭️ {remaining} more signals can be generated")
+                else:
+                    st.success("🎉 All 24-hour signals have been generated!")
+            else:
+                st.info("⏳ No signals in database")
     
     with tab2:
         st.subheader("📜 Trade History")
@@ -369,6 +468,9 @@ def dashboard_page():
             st.info("No trade history yet")
 
 def main():
+    # Initialize session state
+    init_session_state()
+    
     # Set page config
     st.set_page_config(
         page_title="Quotex Trading Bot",
