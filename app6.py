@@ -59,7 +59,10 @@ if 'predictions' not in st.session_state: st.session_state.predictions = []
 
 with st.sidebar:
     st.header("⚙️ ENGINE SETTINGS")
-    target_pair = st.selectbox("SELECT MARKET", ["EUR/USD (OTC)", "GBP/USD (OTC)", "USD/INR (OTC)", "BTC/USD", "GOLD (OTC)"])
+    target_pair = st.selectbox("SELECT MARKET", ["EUR/USD_otc", "GBP/USD_otc", "USD/JPY_otc", "USD/INR_otc", "USD/BRL_otc", "USD/PKR_otc", "AUD/CAD_otc"],
+        "Live Market": ["EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "XAUUSD"],
+        "Commodities": ["Gold_otc", "Silver_otc", "Crude Oil"]
+)
     if st.button("🔍 ANALYZE NEXT 30 CANDLES"):
         now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
         anchor = now.replace(second=0, microsecond=0)
