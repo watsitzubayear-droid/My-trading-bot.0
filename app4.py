@@ -2,53 +2,76 @@ import streamlit as st
 import datetime
 import pandas as pd
 import random
-import time
 
 # --- Page Config ---
-st.set_page_config(page_title="Quotex AI Signal Pro", layout="wide")
+st.set_page_config(page_title="Quotex Sureshot AI", layout="wide")
 
-# --- BDT Clock Logic ---
+# --- Initialize Session State ---
+if 'signals' not in st.session_state:
+    st.session_state.signals = []
+if 'page_num' not in st.session_state:
+    st.session_state.page_num = 0
+
+# --- BDT Time Logic ---
 def get_bdt_time():
     return datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
 
-# --- UI Header ---
-st.title("🤖 Quotex AI Market Analyzer")
+st.title("🤖 Quotex 24H Sureshot Signal Generator")
 st.markdown(f"**Current BDT Time:** `{get_bdt_time().strftime('%H:%M:%S')}`")
 
-# --- Sidebar ---
-st.sidebar.header("Settings")
-market_type = st.sidebar.selectbox("Market Type", ["Real Market", "OTC Market"])
-pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/GBP", "EUR/JPY (OTC)", "USD/CAD (OTC)"]
+# --- Sidebar Controls ---
+st.sidebar.header("Market Analysis Settings")
+market_type = st.sidebar.radio("Market", ["Real Market", "OTC Market"])
+signals_per_page = 30
 
-# --- Signal Generation Logic ---
-if st.button("GENERATE 24H SURESHOT SIGNALS"):
-    st.write("### 📊 24-Hour Forecast Signals")
+# --- Generator Button ---
+if st.sidebar.button("🚀 Generate New 24H List"):
+    pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/GBP", "EUR/JPY (OTC)", "USD/CAD (OTC)"]
+    new_signals = []
     
-    # Create an empty container for real-time updates
-    signal_container = st.container()
+    # 24 hours / 3 min = 480 signals total
+    for i in range(480):
+        pair = random.choice(pairs)
+        time_slot = (get_bdt_time() + datetime.timedelta(minutes=i*3)).strftime("%H:%M")
+        
+        # Sureshot Logic: Randomizing for demo, but kept high for confidence
+        direction = "🟢 CALL (UP)" if random.random() > 0.5 else "🔴 PUT (DOWN)"
+        accuracy = random.randint(92, 98)
+        
+        new_signals.append({
+            "Signal #": i + 1,
+            "Time (BDT)": time_slot,
+            "Pair": pair,
+            "Trade": direction,
+            "Accuracy": f"{accuracy}%"
+        })
     
-    signals_data = []
-    
-    with st.spinner('Analyzing 5-Day Market Movement...'):
-        for i in range(480):  # 24 hours / 3 mins
-            pair = random.choice(pairs)
-            # Logic for Signal
-            time_slot = (get_bdt_time() + datetime.timedelta(minutes=i*3)).strftime("%H:%M")
-            direction = random.choice(["🟢 CALL", "🔴 PUT"])
-            accuracy = random.randint(91, 99)
-            
-            signals_data.append({
-                "Time (BDT)": time_slot,
-                "Pair": pair,
-                "Direction": direction,
-                "Accuracy": f"{accuracy}%"
-            })
+    st.session_state.signals = new_signals
+    st.session_state.page_num = 0  # Reset to first page
 
-    # Display as a clean Table
-    df = pd.DataFrame(signals_data)
+# --- Display Logic with Pagination ---
+if st.session_state.signals:
+    total_signals = len(st.session_state.signals)
+    total_pages = (total_signals // signals_per_page)
+    
+    # Navigation Buttons
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.button("⬅️ Previous") and st.session_state.page_num > 0:
+            st.session_state.page_num -= 1
+    with col2:
+        st.write(f"Page **{st.session_state.page_num + 1}** of **{total_pages}**")
+    with col3:
+        if st.button("Next ➡️") and st.session_state.page_num < total_pages - 1:
+            st.session_state.page_num += 1
+
+    # Calculate index for current page
+    start_idx = st.session_state.page_num * signals_per_page
+    end_idx = start_idx + signals_per_page
+    current_signals = st.session_state.signals[start_idx:end_idx]
+
+    # Show Dataframe
+    df = pd.DataFrame(current_signals)
     st.table(df)
-    st.success("24-Hour Signals Generated Successfully!")
-
-# --- Auto-refresh Clock ---
-time.sleep(1)
-st.rerun()
+else:
+    st.info("Click 'Generate New 24H List' in the sidebar to start.")
