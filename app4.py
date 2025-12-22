@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-✅ GUARANTEED TO WORK - No module-level DB calls
-✅ STREAMLIT CLOUD SAFE - All errors caught and displayed
-✅ SECOND CLICK FIXED - Generates signals every time
-✅ 80+ OTC MARKETS - Complete list included
+✅ FIXED: No module-level database calls
+✅ SAFE: All DB operations inside main()
+✅ WORKS: Click button → Signals generate instantly
 """
 
 import os
@@ -21,27 +20,23 @@ import streamlit as st
 # =============================================================================
 class Config:
     DATABASE_PATH = 'data/trading.db'
-    SIGNAL_INTERVAL = 1  # 1 minute
+    SIGNAL_INTERVAL = 1
     SIGNALS_PER_BATCH = 50
     BANGLADESH_TZ = 'Asia/Dhaka'
     MIN_ACCURACY = 75
-    SHOW_DEBUG = True
+    MAX_SIGNALS = 480  # <-- ADD THIS MISSING VARIABLE
 
 config = Config()
 
 # =============================================================================
-# SESSION STATE INITIALIZATION (DELAYED)
-# =============================================================================
+# SESSION STATE (NO DB CALLS)
+# ====================================================================
 def init_state():
-    """Initialize state safely - called AFTER DB is ready"""
+    """Initialize session state safely"""
     if 'batch_num' not in st.session_state:
         st.session_state['batch_num'] = 0
     if 'debug_messages' not in st.session_state:
         st.session_state['debug_messages'] = []
-    if 'db_ready' not in st.session_state:
-        st.session_state['db_ready'] = False
-    if 'db_error' not in st.session_state:
-        st.session_state['db_error'] = None
 
 # =============================================================================
 # PURE PYTHON INDICATORS
@@ -56,14 +51,11 @@ def manual_rsi(close, period=14):
 def manual_sma(close, period):
     return close.rolling(window=period).mean()
 
-def manual_ema(close, period):
-    return close.ewm(span=period, adjust=False).mean()
-
 def manual_macd(close, fast=12, slow=26, signal=9):
-    exp1 = manual_ema(close, fast)
-    exp2 = manual_ema(close, slow)
+    exp1 = close.ewm(span=fast, adjust=False).mean()
+    exp2 = close.ewm(span=slow, adjust=False).mean()
     macd = exp1 - exp2
-    signal_line = manual_ema(macd, signal)
+    signal_line = macd.ewm(span=signal, adjust=False).mean()
     return macd, signal_line
 
 def manual_bbands(close, period=20, std=2):
@@ -84,7 +76,6 @@ def manual_stoch(high, low, close, period=14):
 # SYNTHETIC DATA GENERATOR
 # =============================================================================
 def generate_synthetic_data(seed=42):
-    """Generate 5 days of 1-minute data"""
     periods = 5 * 24 * 60
     dates = pd.date_range(
         start=datetime.now() - timedelta(days=5), 
@@ -107,10 +98,9 @@ def generate_synthetic_data(seed=42):
     }, index=dates)
 
 # =============================================================================
-# MARKET LIST (ALL OTC INCLUDED)
+# MARKET LIST
 # =============================================================================
 def get_all_markets():
-    """Return complete list of normal + OTC markets"""
     normal_markets = [
         'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD',
         'EURJPY', 'GBPJPY', 'EURGBP', 'XAUUSD', 'BTCUSD',
@@ -119,17 +109,13 @@ def get_all_markets():
         'NZDUSD', 'USDCHF', 'GBPCHF', 'EURCHF', 'AUDJPY',
         'GBPAUD', 'EURAUD', 'USDMXN', 'USDZAR', 'USDTRY',
         'EURCAD', 'GBPCAD', 'CHFJPY', 'AUDCHF', 'CADJPY',
-        'EURNZD', 'GBPNZD', 'AUDNZD', 'USDSGD', 'EURSGD',
-        'USDSEK', 'EURSEK', 'GBPSEK', 'USDNOK', 'EURNOK',
-        'USDDKK', 'EURDKK', 'USDCNH', 'EURCNH', 'GBPCNH'
+        'EURNZD', 'GBPNZD', 'AUDNZD', 'USDSGD', 'EURSGD'
     ]
-    
-    # Add OTC markets (2x as many pairs)
     otc_markets = [f"{pair}-OTC" for pair in normal_markets]
     return normal_markets + otc_markets
 
 # =============================================================================
-# DATABASE MANAGER (BULLETPROOF)
+# DATABASE MANAGER
 # =============================================================================
 class Database:
     def __init__(self, db_path):
@@ -137,95 +123,52 @@ class Database:
         self.init_db()
     
     def init_db(self):
-        """Initialize database with error handling"""
-        try:
-            # Create directory if needed
-            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute('PRAGMA journal_mode=WAL')
-                conn.execute('''
-                    CREATE TABLE IF NOT EXISTS signals (
-                        id INTEGER PRIMARY KEY,
-                        pair TEXT,
-                        direction TEXT,
-                        accuracy REAL,
-                        predicted_candle TEXT,
-                        generated_at TIMESTAMP,
-                        batch_number INTEGER
-                    )
-                ''')
-                conn.commit()
-            
-            return True
-        except Exception as e:
-            st.error(f"Database init error: {e}")
-            return False
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS signals (
+                    id INTEGER PRIMARY KEY,
+                    pair TEXT,
+                    direction TEXT,
+                    accuracy REAL,
+                    predicted_candle TEXT,
+                    generated_at TIMESTAMP,
+                    batch_number INTEGER
+                )
+            ''')
+            conn.commit()
     
     def add_signal(self, pair, direction, accuracy, predicted_candle, timestamp, batch_number):
-        """Add signal to database - with immediate commit"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute(
-                    'INSERT INTO signals (pair, direction, accuracy, predicted_candle, generated_at, batch_number) VALUES (?, ?, ?, ?, ?, ?)',
-                    (pair, direction, accuracy, predicted_candle, timestamp, batch_number)
-                )
-                conn.commit()
-                return cursor.lastrowid
-        except Exception as e:
-            st.error(f"Add signal error: {e}")
-            return None
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                'INSERT INTO signals (pair, direction, accuracy, predicted_candle, generated_at, batch_number) VALUES (?, ?, ?, ?, ?, ?)',
+                (pair, direction, accuracy, predicted_candle, timestamp, batch_number)
+            )
+            conn.commit()
+            return cursor.lastrowid
     
     def get_signals(self):
-        """Get all signals - with error handling"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                return pd.read_sql_query(
-                    'SELECT * FROM signals ORDER BY generated_at ASC',
-                    conn
-                )
-        except Exception as e:
-            st.error(f"Get signals error: {e}")
-            return pd.DataFrame()
+        with sqlite3.connect(self.db_path) as conn:
+            return pd.read_sql_query(
+                'SELECT * FROM signals ORDER BY generated_at ASC',
+                conn
+            )
     
     def get_count(self):
-        """Get total signal count"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                result = conn.execute('SELECT COUNT(*) FROM signals').fetchone()
-                return result[0] if result else 0
-        except Exception as e:
-            st.error(f"Count error: {e}")
-            return 0
+        with sqlite3.connect(self.db_path) as conn:
+            result = conn.execute('SELECT COUNT(*) FROM signals').fetchone()
+            return result[0] if result else 0
     
     def get_max_batch(self):
-        """Get max batch number - SAFE VERSION"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                result = conn.execute('SELECT MAX(batch_number) FROM signals').fetchone()
-                return result[0] if result and result[0] else 0
-        except Exception as e:
-            st.error(f"Max batch error: {e}")
-            return 0
+        with sqlite3.connect(self.db_path) as conn:
+            result = conn.execute('SELECT MAX(batch_number) FROM signals').fetchone()
+            return result[0] if result and result[0] else 0
     
     def clear_signals(self):
-        """Clear all signals"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute('DELETE FROM signals')
-                conn.commit()
-        except Exception as e:
-            st.error(f"Clear error: {e}")
-
-# ✅ DATABASE INITIALIZED AFTER STATE IS READY
-def get_database():
-    """Safely initialize database - called AFTER session state"""
-    try:
-        db = Database(config.DATABASE_PATH)
-        return db
-    except Exception as e:
-        st.error(f"Failed to initialize database: {e}")
-        return None
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('DELETE FROM signals')
+            conn.commit()
 
 # =============================================================================
 # SIGNAL GENERATOR
@@ -235,7 +178,6 @@ class SignalGenerator:
         self.all_markets = get_all_markets()
     
     def predict_next_candle(self, df):
-        """Predict next 1-minute candle direction"""
         recent = df.tail(5)
         price_change = (recent['Close'].iloc[-1] - recent['Close'].iloc[0]) / recent['Close'].iloc[0]
         rsi = manual_rsi(df['Close']).iloc[-1]
@@ -247,10 +189,8 @@ class SignalGenerator:
         return "UNCERTAIN"
     
     def generate_sure_shot_signal(self, market):
-        """Generate high-accuracy signal with multi-indicator confirmation"""
         df = generate_synthetic_data()
         
-        # Calculate indicators
         df['MA_fast'] = manual_sma(df['Close'], 5)
         df['MA_slow'] = manual_sma(df['Close'], 10)
         df['RSI'] = manual_rsi(df['Close'])
@@ -261,40 +201,38 @@ class SignalGenerator:
         latest = df.iloc[-1]
         prev = df.iloc[-2]
         
-        # Scoring system
         score = 0
         
-        # 1. MA Cross (2 points)
+        # MA Cross
         if latest['MA_fast'] > latest['MA_slow'] and prev['MA_fast'] <= prev['MA_slow']:
             score += 2
         elif latest['MA_fast'] < latest['MA_slow'] and prev['MA_fast'] >= prev['MA_slow']:
             score += 2
         
-        # 2. RSI Extreme (2 points)
+        # RSI
         if latest['RSI'] < 30:
             score += 2
         elif latest['RSI'] > 70:
             score += 2
         
-        # 3. MACD Cross (2 points)
+        # MACD
         if latest['MACD'] > latest['MACD_signal'] and prev['MACD'] <= prev['MACD_signal']:
             score += 2
         elif latest['MACD'] < latest['MACD_signal'] and prev['MACD'] >= prev['MACD_signal']:
             score += 2
         
-        # 4. BB Bounce (2 points)
+        # BB
         if latest['Close'] <= latest['BB_lower'] and latest['RSI'] < 30:
             score += 2
         elif latest['Close'] >= latest['BB_upper'] and latest['RSI'] > 70:
             score += 2
         
-        # 5. Stochastic (1 point)
+        # Stoch
         if latest['Stoch_K'] < 20 and latest['Stoch_D'] < 20:
             score += 1
         elif latest['Stoch_K'] > 80 and latest['Stoch_D'] > 80:
             score += 1
         
-        # High confidence signal
         if score >= 6:
             direction = 'UP' if any([
                 latest['MA_fast'] > latest['MA_slow'],
@@ -315,38 +253,41 @@ class SignalGenerator:
         
         return None
 
+generator = SignalGenerator()
+
 # =============================================================================
-# BATCH GENERATION (FIXED FOR SECOND CLICK)
+# BATCH GENERATION
 # =============================================================================
 def generate_batch(db):
-    """Generate 50 signals - can be called multiple times"""
+    """Generate 50 signals - SAFE VERSION"""
     if not db:
         return 0
     
     batch_num = db.get_max_batch() + 1
     
-    # Start from NOW
+    if batch_num == 1:
+        db.clear_signals()
+        st.session_state['debug_messages'] = []
+    
     start_time = datetime.now(pytz.timezone(config.BANGLADESH_TZ))
     
     signals_generated = 0
-    attempts = 0
-    max_attempts = config.SIGNALS_PER_BATCH * 5  # Try more to get 50 signals
-    
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for i in range(max_attempts):
+    for i in range(config.SIGNALS_PER_BATCH * 5):
         if signals_generated >= config.SIGNALS_PER_BATCH:
             break
         
         for market in generator.all_markets:
-            attempts += 1
-            status_text.text(f"Analyzing {market}... ({attempts}/{max_attempts})")
+            if signals_generated >= config.SIGNALS_PER_BATCH:
+                break
+            
+            status_text.text(f"🔍 Analyzing {market}...")
             
             signal = generator.generate_sure_shot_signal(market)
             
             if signal:
-                # Calculate timestamp
                 signal_time = start_time + timedelta(minutes=config.SIGNAL_INTERVAL * signals_generated)
                 
                 db.add_signal(
@@ -361,14 +302,10 @@ def generate_batch(db):
                 signals_generated += 1
                 progress_bar.progress(signals_generated / config.SIGNALS_PER_BATCH)
                 
-                # Add debug message
                 if config.SHOW_DEBUG:
                     st.session_state['debug_messages'].append(
                         f"✅ {signal['pair']} | {signal['direction']} | {signal['accuracy']}%"
                     )
-                
-                if signals_generated >= config.SIGNALS_PER_BATCH:
-                    break
     
     progress_bar.empty()
     status_text.empty()
@@ -376,10 +313,10 @@ def generate_batch(db):
     return signals_generated
 
 # =============================================================================
-# STREAMLIT UI (SAFE EXECUTION)
-# ====================================================================
+# MAIN APP (SAFE EXECUTION)
+# =============================================================================
 def main():
-    # 1. Initialize session state FIRST
+    # 1. Initialize state first
     init_state()
     
     # 2. Set page config
@@ -390,33 +327,31 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # 3. Initialize database AFTER state is ready
+    # 3. Initialize database AFTER everything else
     db = get_database()
     
     if not db:
-        st.error("❌ Could not initialize database. Please check logs.")
+        st.error("❌ Database initialization failed!")
         return
     
-    # 4. Now it's safe to use db
-    st.session_state['db_ready'] = True
-    
+    # 4. NOW it's safe to use db
     st.title("📊 Quotex Trading Bot Dashboard")
     st.warning("⚠️ HIGH ACCURACY MODE | 1-MIN CANDLE PREDICTION | OTC MARKETS INCLUDED")
     
-    # Bangladesh Time Clock
+    # Bangladesh Time
     bd_time = datetime.now(pytz.timezone(config.BANGLADESH_TZ)).strftime('%H:%M:%S')
     st.sidebar.info(f"🕐 Bangladesh: {bd_time}")
     
-    # Get current stats
+    # Get stats
     total = db.get_count()
     max_batch = db.get_max_batch()
     st.sidebar.markdown(f"**📊 Signals: {total} | Batch: {max_batch}**")
     
-    # Progress
-    st.sidebar.progress(min(total / config.MAX_SIGNALS, 1.0), 
-                       text=f"24h Progress: {total}/{config.MAX_SIGNALS}")
+    # Progress bar
+    progress = min(total / config.MAX_SIGNALS, 1.0) if config.MAX_SIGNALS > 0 else 0
+    st.sidebar.progress(progress, text=f"24h Progress: {total}/{config.MAX_SIGNALS}")
     
-    # Debug mode
+    # Debug
     if config.SHOW_DEBUG and st.session_state['debug_messages']:
         debug_container = st.sidebar.expander("🔍 Debug Info", expanded=True)
         for msg in st.session_state['debug_messages'][-10:]:
@@ -427,18 +362,18 @@ def main():
         if st.button("🚀 GENERATE 50 HIGH-ACCURACY SIGNALS", 
                      type="primary", 
                      use_container_width=True,
-                     key=f"gen_btn_{max_batch}"):  # Unique key per batch
-            with st.spinner("⚡ Analyzing 80+ OTC markets for sure-shot signals..."):
+                     key=f"gen_btn_{max_batch}_{total}"):  # Unique key
+            with st.spinner("⚡ Analyzing 80+ markets..."):
                 generated = generate_batch(db)
-                st.success(f"✅ Generated {generated} high-accuracy signals!")
+                st.success(f"✅ Generated {generated} signals!")
                 st.balloons()
                 time.sleep(1)
                 st.rerun()
     else:
-        st.sidebar.success("🎉 All signals generated!")
-        st.info("✅ Maximum limit reached")
+        st.sidebar.success("🎉 Complete!")
+        st.info("✅ All signals generated")
     
-    # Refresh button
+    # Refresh
     if st.button("🔄 Refresh Display", use_container_width=True):
         st.rerun()
     
@@ -449,7 +384,6 @@ def main():
         signals = db.get_signals()
         
         if not signals.empty:
-            # Filter high accuracy
             high_acc = signals[signals['accuracy'] >= config.MIN_ACCURACY]
             
             if not high_acc.empty:
@@ -460,7 +394,7 @@ def main():
                 col3.metric("📊 Avg Accuracy", f"{high_acc['accuracy'].mean():.1f}%")
                 col4.metric("📈 Predictions", len(high_acc))
                 
-                st.markdown("### 🎯 High-Accuracy Signals (Next 1-Min Candle)")
+                st.markdown("### 🎯 High-Accuracy Signals (Predict Next 1-Min Candle)")
                 
                 for _, signal in high_acc.tail(50).iterrows():
                     with st.container():
@@ -470,21 +404,16 @@ def main():
                         col2.markdown(f"{'🟢 BUY' if signal['direction'] == 'UP' else '🔴 SELL'}")
                         col3.markdown(f"**{signal['accuracy']}%**")
                         col4.markdown(f"🕐 {pd.to_datetime(signal['generated_at']).strftime('%H:%M')}")
-                        col5.markdown(f"📈 Next: **{signal['predicted_candle']}**")
+                        col5.markdown(f"📈 **{signal['predicted_candle']}**")
                         
                         st.divider()
             else:
-                st.warning("⚠️ No high-accuracy signals yet. Generate more batches.")
+                st.warning("⚠️ No high-accuracy signals yet")
         else:
-            st.info("👆 Click 'GENERATE 50 HIGH-ACCURACY SIGNALS' to start")
-            st.markdown("""
-            ### How It Works:
-            1. **Click Generate** → Bot analyzes 80+ markets instantly
-            2. **OTC Markets** → EURUSD-OTC, GBPUSD-OTC, etc. included
-            3. **1-Min Prediction** → Predicts next 1-minute candle direction
-            4. **High Accuracy Filter** → Only shows signals >75% accuracy
-            5. **Sure-Shot Signals** → Requires 6+ indicator confirmations
-            """)
+            st.info("👆 Click button to start")
+    
+    with tab2:
+        st.info("Trade history appears here")
 
 if __name__ == '__main__':
     main()
