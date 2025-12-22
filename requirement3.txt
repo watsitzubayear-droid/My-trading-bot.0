@@ -1,0 +1,6 @@
+# Core data manipulation and analysis
+pandas>=1.5.0
+numpy>=1.23.0
+
+# Timezone handling for Bangladesh market hours
+pytz>=2022.1
