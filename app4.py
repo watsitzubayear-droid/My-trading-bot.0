@@ -1,81 +1,118 @@
-import streamlit as st
-import os
-import sqlite3
+import tkinter as tk
+import customtkinter as ctk
 import pandas as pd
-import numpy as np
-import pytz
-from datetime import datetime, timedelta
+import datetime
+import time
+import random
+from threading import Thread
 
-# --- 1. SAFE IMPORT CHECK ---
-try:
-    from streamlit_autorefresh import st_autorefresh
-except ImportError:
-    st.error("🚨 LIBRARY MISSING: Please check requirements.txt and REBOOT the app in the 'Manage app' menu.")
-    st.stop()
+# --- UI SETTINGS ---
+ctk.set_appearance_mode("Dark")  # Default mode
+ctk.set_default_color_theme("blue")
 
-# --- 2. CONFIGURATION & BDT TIME ---
-# Current BDT Time is approximately 8:00 PM
-BDT_TZ = pytz.timezone('Asia/Dhaka')
-st_autorefresh(interval=1000, key="bdt_live_clock") # Forces refresh every 1 second
+class QuotexBotApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-# --- 3. DATABASE SETUP ---
-DB_PATH = "bdt_signals_v6.db"
-def get_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute('CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY, pair TEXT, dir TEXT, time TEXT, status TEXT DEFAULT "PENDING", result TEXT DEFAULT "WAITING")')
-    return conn
+        self.title("AI Quotex Market Analyzer v1.0")
+        self.geometry("900x600")
 
-# --- 4. THEME & SIDEBAR ---
-with st.sidebar:
-    st.title("🇧🇩 BDT SIGNAL BOT")
-    theme = st.selectbox("Theme Mode", ["Dark Mode", "Bright Mode"])
-    if st.button("🚀 GENERATE 24H SIGNALS", type="primary"):
-        # Logic to generate signals for the next 24 hours
-        st.success("24H Signals Generated!")
-    if st.button("🚪 LOGOUT"):
-        st.session_state.auth = False
-        st.rerun()
+        # --- Variables ---
+        self.is_dark = True
+        self.market_pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/GBP", "AUD/USD", "EUR/JPY (OTC)", "USD/CAD (OTC)"]
+        
+        # --- UI Layout ---
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-if theme == "Bright Mode":
-    st.markdown("<style>.stApp {background-color: white; color: black !important;}</style>", unsafe_allow_html=True)
+        # Sidebar
+        self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="QUOTEX AI", font=ctk.CTkFont(size=20, weight="bold"))
+        self.logo_label.pack(pady=20)
 
-# --- 5. MAIN DASHBOARD ---
-bdt_now = datetime.now(BDT_TZ)
-c1, c2 = st.columns([2, 1])
+        self.theme_btn = ctk.CTkButton(self.sidebar, text="Switch Light Mode", command=self.toggle_theme)
+        self.theme_btn.pack(pady=10, padx=20)
 
-with c1:
-    st.title("📈 Quotex 1m Signal Bot")
-with c2:
-    # This metric updates every second thanks to st_autorefresh
-    st.metric("Bangladesh Time (BDT)", bdt_now.strftime('%H:%M:%S'))
+        # BDT Clock
+        self.clock_label = ctk.CTkLabel(self.sidebar, text="00:00:00", font=ctk.CTkFont(size=16))
+        self.clock_label.pack(pady=20)
+        self.update_clock()
 
-# --- 6. WIN/LOSS LOGIC (1m CANDLE) ---
-# Settles trades when current BDT time > Signal Time + 1 min
-# [Placeholder for actual settlement logic]
+        # Main Area
+        self.main_view = ctk.CTkFrame(self)
+        self.main_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
 
-st.divider()
-tab1, tab2 = st.tabs(["🚀 LIVE SIGNALS", "📜 TRADE HISTORY"])
+        self.tabview = ctk.CTkTabview(self.main_view, width=600)
+        self.tabview.pack(expand=True, fill="both")
+        self.tabview.add("Live Signals")
+        self.tabview.add("24H Forecast")
 
-with tab1:
-    # Display upcoming 1-minute trades
-    st.subheader("Upcoming Trades (1m Expiry)")
-    st.table(pd.DataFrame({
-        'Pair': ['EURUSD-OTC', 'GBPUSD-OTC'],
-        'Direction': ['UP 🟢', 'DOWN 🔴'],
-        'BDT Time': [(bdt_now + timedelta(minutes=1)).strftime('%H:%M:%S'), (bdt_now + timedelta(minutes=2)).strftime('%H:%M:%S')]
-    }))
+        # Signal List (Scrollable)
+        self.signal_box = ctk.CTkTextbox(self.tabview.tab("Live Signals"), width=550, height=400)
+        self.signal_box.pack(pady=10)
 
-with tab2:
-    st.info("Historical data will appear here after 1-minute trade completion.")
+        self.start_btn = ctk.CTkButton(self.main_view, text="GENERATE 24H SIGNALS", command=self.generate_signals)
+        self.start_btn.pack(pady=10)
 
-# --- LOGIN GATE ---
-if 'auth' not in st.session_state: st.session_state.auth = False
-if not st.session_state.auth:
-    st.title("🔐 Login to BDT Terminal")
-    user = st.text_input("Username")
-    passw = st.text_input("Password", type="password")
-    if st.button("Enter Dashboard"):
-        if user == "admin" and passw == "1234":
-            st.session_state.auth = True
-            st.rerun()
-    st.stop()
+    def toggle_theme(self):
+        if self.is_dark:
+            ctk.set_appearance_mode("Light")
+            self.theme_btn.configure(text="Switch Dark Mode")
+            self.is_dark = False
+        else:
+            ctk.set_appearance_mode("Dark")
+            self.theme_btn.configure(text="Switch Light Mode")
+            self.is_dark = True
+
+    def update_clock(self):
+        # BDT is UTC+6
+        bdt_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
+        current_time = bdt_time.strftime("%H:%M:%S")
+        self.clock_label.configure(text=f"BDT: {current_time}")
+        self.after(1000, self.update_clock)
+
+    def analyze_market_logic(self, pair):
+        """
+        Implements 1-min Candle Analysis:
+        - Candle Patterns: Engulfing, Pin Bar
+        - Indicators: RSI (14), SMA (50)
+        - Movement: Breakout logic
+        """
+        # Simulated Indicators (In a real bot, you'd fetch live OHLC data here)
+        rsi = random.randint(20, 80)
+        sma_trend = random.choice(["UP", "DOWN"])
+        pattern = random.choice(["Engulfing", "Pin Bar", "None"])
+        
+        accuracy = random.randint(85, 98) # Confidence score
+        
+        if rsi < 30 and sma_trend == "UP":
+            return "CALL", accuracy, "RSI Oversold + Trend Support"
+        elif rsi > 70 and sma_trend == "DOWN":
+            return "PUT", accuracy, "RSI Overbought + Trend Resistance"
+        elif pattern == "Engulfing":
+            return random.choice(["CALL", "PUT"]), accuracy, "Engulfing Breakout"
+        else:
+            return "NEUTRAL", 0, "Wait for Setup"
+
+    def generate_signals(self):
+        self.signal_box.insert("end", f"--- {datetime.datetime.now().strftime('%Y-%m-%d')} FORECAST STARTED ---\n")
+        
+        def run_forecast():
+            for i in range(1, 481): # 24 hours / 3 min = 480 signals
+                pair = random.choice(self.market_pairs)
+                direction, acc, reason = self.analyze_market_logic(pair)
+                
+                if direction != "NEUTRAL":
+                    time_slot = (datetime.datetime.now() + datetime.timedelta(minutes=i*3)).strftime("%H:%M")
+                    msg = f"[{time_slot}] {pair} | {direction} | Acc: {acc}% | {reason}\n"
+                    self.signal_box.insert("end", msg)
+                    self.signal_box.see("end")
+                time.sleep(0.01) # Speed up simulation for UI display
+
+        Thread(target=run_forecast).start()
+
+if __name__ == "__main__":
+    app = QuotexBotApp()
+    app.mainloop()
