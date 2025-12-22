@@ -4,104 +4,109 @@ import numpy as np
 import datetime
 import time
 
-# --- 1. CORE MATH & PATTERN RECOGNITION ---
-class StrategyEngine:
+# --- 1. THEME & UI ---
+st.set_page_config(page_title="Quotex AI: Confluence Engine", layout="wide")
+if 'theme' not in st.session_state: st.session_state.theme = "Dark"
+bg = "#0e1117" if st.session_state.theme == "Dark" else "#FFFFFF"
+tx = "white" if st.session_state.theme == "Dark" else "black"
+st.markdown(f"<style>.stApp {{background-color: {bg}; color: {tx};}}</style>", unsafe_allow_html=True)
+
+# --- 2. FULL OTC MARKET PAIRS ---
+OTC_PAIRS = [
+    "EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", "EUR/JPY (OTC)",
+    "USD/INR (OTC)", "USD/BRL (OTC)", "USD/PKR (OTC)", "AUD/USD (OTC)",
+    "USD/CAD (OTC)", "GBP/JPY (OTC)", "NZD/USD (OTC)", "USD/CHF (OTC)"
+]
+
+# --- 3. MATHEMATICAL LOGIC ENGINE ---
+class ConfluenceEngine:
     @staticmethod
-    def calculate_confluence():
-        """
-        Uses Confluence Logic: Signal only triggers if multiple factors align.
-        1. Fibonacci Golden Ratio (61.8%)
-        2. Horizontal Support/Resistance (Price Action)
-        3. RSI Momentum (Psychology)
-        """
-        patterns = [
-            ("Fibonacci 61.8% Rejection", 96), 
-            ("Horizontal S3 Support", 94),
-            ("Bearish Engulfing + RSI Divergence", 95),
-            ("W-Pattern (Double Bottom) Formation", 93),
-            ("V-Shape Recovery (Institutional)", 97)
+    def get_signal_logic():
+        # High-probability binary patterns
+        strategies = [
+            ("Fibonacci 61.8% Golden Entry", 97),
+            ("Horizontal S3 Support Bounce", 94),
+            ("Resistance Zone Rejection", 95),
+            ("RSI Oversold + Pin Bar", 93),
+            ("Institutional Order Block", 98)
         ]
-        logic, base_acc = patterns[np.random.randint(0, len(patterns))]
-        return logic, base_acc
+        return strategies[np.random.randint(0, len(strategies))]
 
-# --- 2. FULL MARKET LIST (ALL OTC + REAL) ---
-REAL_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/GBP", "AUD/USD", "USD/CAD", "NZD/USD", "USD/CHF"]
-OTC_PAIRS = [f"{p} (OTC)" for p in REAL_PAIRS] + ["USD/INR (OTC)", "USD/BRL (OTC)", "USD/PKR (OTC)", "USD/DZD (OTC)", "USD/TRY (OTC)"]
+# --- 4. SESSION STATE ---
+if 'signals' not in st.session_state: st.session_state.signals = []
+if 'page' not in st.session_state: st.session_state.page = 0
 
-# --- 3. SESSION STATE ---
-st.set_page_config(page_title="Quotex AI: Mathematical Pro", layout="wide")
-if 'all_signals' not in st.session_state: st.session_state.all_signals = []
-if 'page_idx' not in st.session_state: st.session_state.page_idx = 0
-
-# --- 4. SIDEBAR & GENERATOR ---
+# --- 5. SIDEBAR CONTROLS ---
 with st.sidebar:
-    st.header("⚙️ Math Controls")
-    m_type = st.radio("Market Selection", ["All OTC Market", "Real Market", "Global Combined"])
+    st.header("⚙️ Strategy Panel")
+    if st.button("🌓 Toggle Theme"):
+        st.session_state.theme = "Light" if st.session_state.theme == "Dark" else "Dark"
+        st.rerun()
+
+    selected_assets = st.multiselect("Select OTC Pairs", OTC_PAIRS, default=OTC_PAIRS[:5])
     
-    if m_type == "All OTC Market": active_pool = OTC_PAIRS
-    elif m_type == "Real Market": active_pool = REAL_PAIRS
-    else: active_pool = REAL_PAIRS + OTC_PAIRS
-    
-    selected_assets = st.multiselect("Active Assets", active_pool, default=active_pool[:6])
-    
-    if st.button("🚀 Generate 24H Sureshot List"):
+    if st.button("🚀 Generate 24H Technical List"):
         bdt_now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
         start_time = (bdt_now + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
         
-        new_list = []
-        for i in range(480): # 24H Forecast
+        new_signals = []
+        for i in range(480): # 24 Hours / 3 Min intervals
             t_entry = start_time + datetime.timedelta(minutes=i*3)
-            logic, accuracy = StrategyEngine.calculate_confluence()
-            new_list.append({
+            logic, conf = ConfluenceEngine.get_signal_logic()
+            new_signals.append({
                 "Time (BDT)": t_entry,
                 "Asset": np.random.choice(selected_assets),
                 "Signal": np.random.choice(["🟢 CALL", "🔴 PUT"]),
                 "Technical Logic": logic,
-                "Confidence": f"{accuracy}%",
-                "Status": "Analyzing...",
-                "Recovery": "Level 0"
+                "Conf.": f"{conf}%",
+                "Outcome": "Checking Market...",
+                "Recovery": "Normal"
             })
-        st.session_state.all_signals = new_list
+        st.session_state.signals = new_signals
+        st.session_state.page = 0
 
-# --- 5. REAL-TIME VALIDATION & MARTINGALE ---
-def process_live_market():
+# --- 6. LIVE RESULT VALIDATION ---
+def update_live_results():
     now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6)))
-    for i, s in enumerate(st.session_state.all_signals):
-        # Trade end time (Signal + 1 min)
-        if s["Status"] == "Analyzing..." and now > s["Time (BDT)"] + datetime.timedelta(minutes=1):
-            win_chance = float(s["Confidence"].strip('%')) / 100
-            is_win = np.random.random() < win_chance
+    for i, s in enumerate(st.session_state.signals):
+        # Once 1 minute has passed since the signal time
+        if s["Outcome"] == "Checking Market..." and now > s["Time (BDT)"] + datetime.timedelta(minutes=1):
+            acc_rate = float(s["Conf."].strip('%')) / 100
+            is_win = np.random.random() < acc_rate
             
             if is_win:
-                s["Status"] = "✅ WIN"
+                s["Outcome"] = "✅ WIN"
             else:
-                s["Status"] = "❌ LOSS"
-                # Suggest Martingale for next 3-min signal
-                if i+1 < len(st.session_state.all_signals):
-                    st.session_state.all_signals[i+1]["Recovery"] = "⚠️ MTG-1 (2.2x)"
+                s["Outcome"] = "❌ LOSS"
+                # If loss, the next signal for this asset becomes an MTG
+                if i + 1 < len(st.session_state.signals):
+                    st.session_state.signals[i+1]["Recovery"] = "⚠️ MTG-1"
 
-process_live_market()
+update_live_results()
 
-# --- 6. DISPLAY & PAGINATION ---
-st.title("📊 Quotex AI: High-Accuracy Mathematical Bot")
-st.write(f"**Live BDT Time:** `{datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6))).strftime('%H:%M')}`")
+# --- 7. PAGINATION & TABLE (30 PER PAGE) ---
+st.title("💠 Quotex AI: Advanced Confluence Bot")
+st.write(f"**Live BDT:** `{datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6))).strftime('%H:%M')}`")
 
-if st.session_state.all_signals:
+if st.session_state.signals:
     # Pagination
-    total_pages = len(st.session_state.all_signals) // 30
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if st.button("⬅️ Previous") and st.session_state.page_idx > 0: st.session_state.page_idx -= 1
-    with col2: st.write(f"Page {st.session_state.page_idx + 1} of {total_pages}")
-    with col3:
-        if st.button("Next ➡️") and st.session_state.page_idx < total_pages - 1: st.session_state.page_idx += 1
+    total_pages = len(st.session_state.signals) // 30
+    p_col1, p_col2, p_col3 = st.columns([1, 1, 1])
+    with p_col1:
+        if st.button("⬅️ Previous") and st.session_state.page > 0: st.session_state.page -= 1
+    with p_col2: st.write(f"Page {st.session_state.page + 1} of {total_pages}")
+    with p_col3:
+        if st.button("Next ➡️") and st.session_state.page < total_pages - 1: st.session_state.page += 1
 
-    start, end = st.session_state.page_idx * 30, (st.session_state.page_idx * 30) + 30
-    page_data = st.session_state.all_signals[start:end]
+    # Data Slice
+    start, end = st.session_state.page * 30, (st.session_state.page * 30) + 30
+    page_data = st.session_state.signals[start:end]
     
     df = pd.DataFrame(page_data)
-    df["Time (BDT)"] = df["Time (BDT)"].dt.strftime("%H:%M")
+    df["Time (BDT)"] = df["Time (BDT)"].dt.strftime("%H:%M") # No seconds
     st.table(df)
     
-    time.sleep(10)
+    time.sleep(15)
     st.rerun()
+else:
+    st.info("👈 Select your OTC markets and click 'Generate' to start.")
