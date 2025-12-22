@@ -6,69 +6,76 @@ import numpy as np
 import pytz
 from datetime import datetime, timedelta
 
-# --- SAFE IMPORT CHECK ---
+# --- 1. SAFE IMPORT CHECK ---
 try:
     from streamlit_autorefresh import st_autorefresh
 except ImportError:
-    st.error("⚠️ 'streamlit-autorefresh' is not installed. Check your requirements.txt and REBOOT the app.")
+    st.error("🚨 LIBRARY MISSING: Please check requirements.txt and REBOOT the app in the 'Manage app' menu.")
     st.stop()
 
-# --- 1. SETTINGS & BDT TIME ---
-st.set_page_config(page_title="BDT Signal Bot", layout="wide")
-BANGLADESH_TZ = pytz.timezone('Asia/Dhaka')
-st_autorefresh(interval=1000, key="bdt_clock") # Live refresh every 1s
+# --- 2. CONFIGURATION & BDT TIME ---
+# Current BDT Time is approximately 8:00 PM
+BDT_TZ = pytz.timezone('Asia/Dhaka')
+st_autorefresh(interval=1000, key="bdt_live_clock") # Forces refresh every 1 second
 
-# --- 2. DATABASE LOGIC ---
-DB_PATH = "bdt_signals.db"
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY, pair TEXT, dir TEXT, time TEXT, result TEXT DEFAULT "PENDING")')
-    conn.commit()
+# --- 3. DATABASE SETUP ---
+DB_PATH = "bdt_signals_v6.db"
+def get_connection():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute('CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY, pair TEXT, dir TEXT, time TEXT, status TEXT DEFAULT "PENDING", result TEXT DEFAULT "WAITING")')
     return conn
 
-# --- 3. THEME & MENU ---
+# --- 4. THEME & SIDEBAR ---
 with st.sidebar:
-    st.title("🎛️ Terminal Menu")
-    theme = st.radio("Appearance", ["Dark Mode", "Bright Mode"])
-    if st.button("🚀 Generate 1M Signals"):
-        # Logic to fill DB with 1-minute signals
-        st.success("Signals generated for next 24h")
-    if st.button("🚪 Logout"):
+    st.title("🇧🇩 BDT SIGNAL BOT")
+    theme = st.selectbox("Theme Mode", ["Dark Mode", "Bright Mode"])
+    if st.button("🚀 GENERATE 24H SIGNALS", type="primary"):
+        # Logic to generate signals for the next 24 hours
+        st.success("24H Signals Generated!")
+    if st.button("🚪 LOGOUT"):
         st.session_state.auth = False
         st.rerun()
 
 if theme == "Bright Mode":
     st.markdown("<style>.stApp {background-color: white; color: black !important;}</style>", unsafe_allow_html=True)
 
-# --- 4. DASHBOARD ---
-bdt_now = datetime.now(BANGLADESH_TZ)
+# --- 5. MAIN DASHBOARD ---
+bdt_now = datetime.now(BDT_TZ)
 c1, c2 = st.columns([2, 1])
+
 with c1:
-    st.title("📈 Quotex BDT Signal Bot")
+    st.title("📈 Quotex 1m Signal Bot")
 with c2:
-    st.metric("🇧🇩 Bangladesh Time (BDT)", bdt_now.strftime('%H:%M:%S'))
+    # This metric updates every second thanks to st_autorefresh
+    st.metric("Bangladesh Time (BDT)", bdt_now.strftime('%H:%M:%S'))
 
-# --- 5. PERFORMANCE & HISTORY ---
-# Example layout for win ratios
+# --- 6. WIN/LOSS LOGIC (1m CANDLE) ---
+# Settles trades when current BDT time > Signal Time + 1 min
+# [Placeholder for actual settlement logic]
+
 st.divider()
-col_a, col_b = st.columns(2)
-col_a.subheader("🎯 Win Ratio (Last 100)")
-col_a.progress(0.85, text="85% Accuracy")
+tab1, tab2 = st.tabs(["🚀 LIVE SIGNALS", "📜 TRADE HISTORY"])
 
-st.subheader("🚀 Active 1-Minute Signals")
-# Placeholder data
-st.table(pd.DataFrame({
-    'Pair': ['EURUSD-OTC', 'GBPUSD-OTC'],
-    'Direction': ['UP ⬆️', 'DOWN ⬇️'],
-    'Time (BDT)': [(bdt_now + timedelta(minutes=1)).strftime('%H:%M:%S'), (bdt_now + timedelta(minutes=2)).strftime('%H:%M:%S')]
-}))
+with tab1:
+    # Display upcoming 1-minute trades
+    st.subheader("Upcoming Trades (1m Expiry)")
+    st.table(pd.DataFrame({
+        'Pair': ['EURUSD-OTC', 'GBPUSD-OTC'],
+        'Direction': ['UP 🟢', 'DOWN 🔴'],
+        'BDT Time': [(bdt_now + timedelta(minutes=1)).strftime('%H:%M:%S'), (bdt_now + timedelta(minutes=2)).strftime('%H:%M:%S')]
+    }))
 
-# --- LOGIN WRAPPER ---
+with tab2:
+    st.info("Historical data will appear here after 1-minute trade completion.")
+
+# --- LOGIN GATE ---
 if 'auth' not in st.session_state: st.session_state.auth = False
 if not st.session_state.auth:
     st.title("🔐 Login to BDT Terminal")
-    if st.text_input("User") == "admin" and st.text_input("Pass", type="password") == "1234":
-        if st.button("Login"):
+    user = st.text_input("Username")
+    passw = st.text_input("Password", type="password")
+    if st.button("Enter Dashboard"):
+        if user == "admin" and passw == "1234":
             st.session_state.auth = True
             st.rerun()
     st.stop()
