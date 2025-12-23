@@ -1,0 +1,14 @@
+{
+  "app_name": "Zoha Neural-100 Pro Terminal",
+  "version": "4.0.0",
+  "risk_per_trade": 1.5,
+  "default_min_score": 75,
+  "max_position_size": 100,
+  "enable_binance": false,
+  "api_keys": {
+    "binance_api": "",
+    "binance_secret": ""
+  },
+  "alert_webhook": "",
+  "log_level": "INFO"
+}
