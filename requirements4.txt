@@ -1,12 +1,7 @@
-# UI Framework for the modern dark/light theme
-customtkinter
-
-# Image processing (Required by CustomTkinter)
-Pillow
-
-# Data Analysis and Market Math
+streamlit
 pandas
 numpy
-
-# Optional: For fetching real market data (if expanding the code)
 yfinance
+pandas-ta
+plotly
+pytz
