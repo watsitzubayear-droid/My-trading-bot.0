@@ -12,859 +12,456 @@ import logging
 import json
 import hashlib
 import warnings
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
-import io
-
 warnings.filterwarnings('ignore')
 
-# --- PRODUCTION CONFIGURATION ---
-CONFIG_FILE = "professional_config.json"
-LOG_FILE = "trading_terminal_pro.log"
-SESSION_FILE = "session_data.json"
-
-# Advanced Logging Setup
+# --- CONFIGURATIONS & LOGGING ---
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE),
+        logging.FileHandler("trading_terminal.log"),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# --- DATA CLASSES FOR TYPE SAFETY ---
-@dataclass
-class Signal:
-    symbol: str
-    score: int
-    direction: str
-    entry_price: float
-    stop_loss: float
-    take_profit: float
-    position_size: float
-    timeframe: str
-    timestamp: str
-    confidence: str
-    analysis_details: Dict
-    
-@dataclass
-class SessionMetrics:
-    total_signals: int = 0
-    win_rate: float = 0.0
-    profit_factor: float = 0.0
-    max_drawdown: float = 0.0
-    avg_score: float = 0.0
-    timestamp: str = ""
+VERSION = "2.0.0"
+CONFIG_FILE = "trading_config.json"
 
-# --- CORE ANALYSIS ENGINE ---
-class NeuralAnalysisEngine:
+# --- ADVANCED TECHNICAL ANALYSIS ENGINE ---
+class TechnicalAnalysisEngine:
     def __init__(self, symbol: str):
         self.symbol = symbol
+        self.data = {}
         self.score = 0
-        self.analysis_log = []
-        self.data_cache = {}
+        self.analysis_results = {}
         
-    @st.cache_data(ttl=300, show_spinner=False)
-    def fetch_multi_timeframe(_self, symbol: str) -> Dict[str, pd.DataFrame]:
-        """Fetch data across multiple timeframes with caching"""
-        timeframes = {
-            '1m': ('1d', '1m'),
-            '5m': ('5d', '5m'),
-            '15m': ('15d', '15m'),
-            '1h': ('1mo', '1h'),
-            '4h': ('3mo', '4h'),
-            '1d': ('1y', '1d')
-        }
-        
-        data = {}
-        for tf, (period, interval) in timeframes.items():
-            try:
-                ticker = yf.Ticker(symbol)
-                df = ticker.history(period=period, interval=interval)
-                if not df.empty:
-                    df.reset_index(inplace=True)
-                    data[tf] = df
-                else:
-                    logger.warning(f"No data for {symbol} on {tf}")
-                    data[tf] = pd.DataFrame()
-            except Exception as e:
-                logger.error(f"Fetch error {symbol} {tf}: {e}")
-                data[tf] = pd.DataFrame()
+    def fetch_data(self, period: str = "1d", interval: str = "1m") -> pd.DataFrame:
+        """Fetch real market data from Yahoo Finance"""
+        try:
+            logger.info(f"Fetching data for {self.symbol} - {interval}")
+            ticker = yf.Ticker(self.symbol)
+            df = ticker.history(period=period, interval=interval)
+            
+            if df.empty:
+                logger.warning(f"No data found for {self.symbol}")
+                return pd.DataFrame()
                 
-        return data
+            df.reset_index(inplace=True)
+            return df
+        except Exception as e:
+            logger.error(f"Data fetch error for {self.symbol}: {e}")
+            return pd.DataFrame()
     
-    def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate institutional-grade indicators"""
+    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate comprehensive technical indicators"""
         if df.empty:
             return df
             
-        # Trend & Momentum
+        # Trend Indicators
+        df['SMA_20'] = ta.sma(df['Close'], length=20)
         df['EMA_9'] = ta.ema(df['Close'], length=9)
         df['EMA_21'] = ta.ema(df['Close'], length=21)
-        df['EMA_50'] = ta.ema(df['Close'], length=50)
-        df['SMA_200'] = ta.sma(df['Close'], length=200)
         
-        # RSI with multiple lengths
-        df['RSI_14'] = ta.rsi(df['Close'], length=14)
-        df['RSI_7'] = ta.rsi(df['Close'], length=7)
-        df['RSI_21'] = ta.rsi(df['Close'], length=21)
-        df['Stoch_RSI'] = ta.stochrsi(df['Close'])['STOCHRSIk_14_14_3_3']
-        
-        # MACD
+        # Momentum
+        df['RSI'] = ta.rsi(df['Close'], length=14)
         macd = ta.macd(df['Close'], fast=12, slow=26, signal=9)
         df = pd.concat([df, macd], axis=1)
         
-        # Bollinger Bands
-        bb = ta.bbands(df['Close'], length=20, std=2)
-        df = pd.concat([df, bb], axis=1)
-        df['BB_Position'] = (df['Close'] - df['BBL_20_2.0']) / (df['BBU_20_2.0'] - df['BBL_20_2.0'])
+        # Volatility
+        bbands = ta.bbands(df['Close'], length=20)
+        df = pd.concat([df, bbands], axis=1)
+        df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
         
-        # Volume Profile
+        # Volume & Price Action
         df['VWAP'] = ta.vwap(df['High'], df['Low'], df['Close'], df['Volume'])
         df['OBV'] = ta.obv(df['Close'], df['Volume'])
-        df['Volume_MA'] = df['Volume'].rolling(20).mean()
-        df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
         
-        # Volatility
-        df['ATR_14'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
-        df['ATR_Pct'] = df['ATR_14'] / df['Close'] * 100
-        
-        # Order Flow (simplified)
-        df['Delta'] = df['Close'] - df['Open']
-        df['CVD'] = df['Delta'].cumsum()
+        # Support/Resistance
+        df['prev_high'] = df['High'].shift(1)
+        df['prev_low'] = df['Low'].shift(1)
         
         return df
     
-    def analyze_smc_concepts(self, df: pd.DataFrame) -> Dict:
-        """Smart Money Concepts Analysis"""
-        current = df.iloc[-1]
-        
-        # Premium/Discount/Demand zones
-        bb_position = current['BB_Position']
-        vwap_position = current['Close'] > current['VWAP']
-        
-        zones = {
-            'premium': bb_position > 0.8,
-            'discount': bb_position < 0.2,
-            'equilibrium': 0.2 <= bb_position <= 0.8,
-            'above_vwap': vwap_position,
-            'vwap_support': abs(current['Close'] - current['VWAP']) / current['Close'] < 0.001
+    def analyze_market_structure(self, df: pd.DataFrame) -> dict:
+        """Analyze SMC/ICT concepts - Market Structure"""
+        results = {
+            'bullish_break': False,
+            'bearish_break': False,
+            'premium_zone': False,
+            'discount_zone': False,
+            'equilibrium': False
         }
         
-        # Fair Value Gaps (FVG)
-        zones['fvg_bullish'] = current['Low'] > df['High'].iloc[-3] and current['Close'] > current['Open']
-        zones['fvg_bearish'] = current['High'] < df['Low'].iloc[-3] and current['Close'] < current['Open']
+        current_price = df['Close'].iloc[-1]
+        bb_middle = df['BBM_20_2.0'].iloc[-1]
+        bb_upper = df['BBU_20_2.0'].iloc[-1]
+        bb_lower = df['BBL_20_2.0'].iloc[-1]
         
-        return zones
+        # Premium/Discount zones (Bollinger Bands)
+        results['premium_zone'] = current_price > bb_upper
+        results['discount_zone'] = current_price < bb_lower
+        results['equilibrium'] = bb_lower <= current_price <= bb_upper
+        
+        # Structure breaks
+        results['bullish_break'] = current_price > df['prev_high'].iloc[-1]
+        results['bearish_break'] = current_price < df['prev_low'].iloc[-1]
+        
+        return results
     
-    def check_confluence(self, tf_data: Dict[str, pd.DataFrame]) -> Tuple[int, Dict]:
-        """Master confluence checker - 100pt scoring"""
+    def score_indicator(self, condition: bool, points: int, name: str):
+        """Helper to score individual conditions"""
+        if condition:
+            self.score += points
+            self.analysis_results[name] = "✓ PASSED"
+        else:
+            self.analysis_results[name] = "✗ FAILED"
+    
+    def calculate_signal_score(self, current_timeframe: str = "1m") -> dict:
+        """Core scoring logic - 100 point system"""
         self.score = 0
-        self.analysis_log = []
+        self.analysis_results = {}
         
-        current_tf = '5m'  # Primary
-        if current_tf not in tf_data or tf_data[current_tf].empty:
-            return 0, {"error": "No primary timeframe data"}
+        # Fetch multi-timeframe data
+        df_1m = self.fetch_data("1d", "1m")
+        df_5m = self.fetch_data("5d", "5m")
+        df_15m = self.fetch_data("15d", "15m")
+        df_1h = self.fetch_data("1mo", "1h")
         
-        df = tf_data[current_tf]
-        current = df.iloc[-1]
+        if df_1m.empty:
+            return {"error": "No data available"}
         
-        # --- SECTOR 1: Trend Confluence (30 pts) ---
-        trend_score = 0
-        if current['EMA_9'] > current['EMA_21'] > current['EMA_50']:
-            trend_score += 15
-            self.analysis_log.append("✅ Strong Bullish EMA Stack (+15)")
-        elif current['EMA_9'] < current['EMA_21'] < current['EMA_50']:
-            trend_score += 15
-            self.analysis_log.append("✅ Strong Bearish EMA Stack (+15)")
+        # Calculate indicators for all timeframes
+        df_1m = self.calculate_indicators(df_1m)
+        df_5m = self.calculate_indicators(df_5m)
+        df_15m = self.calculate_indicators(df_15m)
+        df_1h = self.calculate_indicators(df_1h)
+        
+        current_price = df_1m['Close'].iloc[-1]
+        
+        # --- SCORING SYSTEM (100 Points) ---
+        
+        # Trend Alignment (30 points)
+        ema_9_1m = df_1m['EMA_9'].iloc[-1]
+        ema_21_1m = df_1m['EMA_21'].iloc[-1]
+        ema_9_5m = df_5m['EMA_9'].iloc[-1]
+        ema_21_5m = df_5m['EMA_21'].iloc[-1]
+        
+        trend_bullish_1m = ema_9_1m > ema_21_1m
+        trend_bullish_5m = ema_9_5m > ema_21_5m
+        
+        self.score_indicator(trend_bullish_1m and trend_bullish_5m, 15, "Multi-TF Trend Alignment")
+        self.score_indicator(abs(current_price - ema_9_1m) / current_price < 0.002, 15, "Price Near EMA")
+        
+        # Momentum (25 points)
+        rsi_1m = df_1m['RSI'].iloc[-1]
+        rsi_15m = df_15m['RSI'].iloc[-1]
+        
+        # RSI conditions
+        self.score_indicator(30 < rsi_1m < 70, 10, "RSI in Neutral Zone")
+        self.score_indicator(rsi_15m > 50, 10, "15m RSI Bullish")
+        self.score_indicator(df_1m['MACD_12_26_9'].iloc[-1] > df_1m['MACDs_12_26_9'].iloc[-1], 5, "MACD Crossover")
+        
+        # Volatility & S/R (20 points)
+        market_structure = self.analyze_market_structure(df_1m)
+        
+        self.score_indicator(market_structure['equilibrium'], 10, "Price in Equilibrium")
+        self.score_indicator(df_1m['ATR'].iloc[-1] > df_1m['ATR'].mean() * 0.8, 5, "Healthy Volatility")
+        self.score_indicator(current_price > df_1m['VWAP'].iloc[-1], 5, "Above VWAP")
+        
+        # Volume Profile (15 points)
+        volume_increase = df_1m['Volume'].iloc[-1] > df_1m['Volume'].rolling(20).mean().iloc[-1]
+        self.score_indicator(volume_increase, 15, "Volume Confirmation")
+        
+        # Risk Filter (10 points)
+        # Spread check (simulated)
+        spread = (df_1m['High'].iloc[-1] - df_1m['Low'].iloc[-1]) / current_price * 100
+        self.score_indicator(spread < 0.1, 10, "Low Spread Condition")
+        
+        # Determine direction
+        if self.score >= 70:
+            direction = "UP (CALL) 🟢" if trend_bullish_1m else "DOWN (PUT) 🔴"
+        else:
+            direction = "NEUTRAL ⚪"
             
-        # Multi-TF trend alignment
-        if '15m' in tf_data and not tf_data['15m'].empty:
-            tf_15m = tf_data['15m'].iloc[-1]
-            if (current['EMA_21'] > current['EMA_50']) == (tf_15m['EMA_21'] > tf_15m['EMA_50']):
-                trend_score += 15
-                self.analysis_log.append("✅ Multi-TF Trend Sync (+15)")
-        
-        self.score += trend_score
-        
-        # --- SECTOR 2: Momentum Confluence (25 pts) ---
-        mom_score = 0
-        
-        # RSI Confluence
-        rsi_14 = current['RSI_14']
-        if 35 < rsi_14 < 65:
-            mom_score += 10
-            self.analysis_log.append(f"✅ RSI in Sweet Zone ({rsi_14:.1f}) (+10)")
-        
-        # MACD Divergence
-        if current['MACD_12_26_9'] > current['MACDs_12_26_9']:
-            mom_score += 10
-            self.analysis_log.append("✅ MACD Bullish Cross (+10)")
-            
-        # Stochastic RSI
-        if current['Stoch_RSI'] < 0.2:
-            mom_score += 5
-            self.analysis_log.append("✅ OVERSOLD Stoch RSI (+5)")
-        elif current['Stoch_RSI'] > 0.8:
-            mom_score += 5
-            self.analysis_log.append("✅ OVERBOUGHT Stoch RSI (+5)")
-        
-        self.score += mom_score
-        
-        # --- SECTOR 3: Volatility & S/R (20 pts) ---
-        vol_score = 0
-        
-        # Bollinger Band Position
-        if 0.25 <= current['BB_Position'] <= 0.75:
-            vol_score += 10
-            self.analysis_log.append("✅ Price in Value Area (+10)")
-        
-        # ATR Filter
-        if 0.5 < current['ATR_Pct'] < 2.0:
-            vol_score += 10
-            self.analysis_log.append(f"✅ Healthy Volatility ({current['ATR_Pct']:.2f}%) (+10)")
-        
-        self.score += vol_score
-        
-        # --- SECTOR 4: Volume & Order Flow (15 pts) ---
-        vol_flow_score = 0
-        
-        if current['Volume_Ratio'] > 1.5:
-            vol_flow_score += 8
-            self.analysis_log.append(f"✅ Volume Spike ({current['Volume_Ratio']:.1f}x) (+8)")
-        
-        if current['OBV'] > df['OBV'].iloc[-20]:
-            vol_flow_score += 7
-            self.analysis_log.append("✅ OBV Trending Up (+7)")
-        
-        self.score += vol_flow_score
-        
-        # --- SECTOR 5: SMC & Order Blocks (10 pts) ---
-        smc_score = 0
-        smc = self.analyze_smc_concepts(df)
-        
-        if smc['equilibrium']:
-            smc_score += 5
-            self.analysis_log.append("✅ SMC Equilibrium Zone (+5)")
-        
-        if smc['vwap_support']:
-            smc_score += 5
-            self.analysis_log.append("✅ VWAP Support Tested (+5)")
-        
-        self.score += smc_score
-        
-        return min(self.score, 100), {
-            "trend": trend_score,
-            "momentum": mom_score,
-            "volatility": vol_score,
-            "volume": vol_flow_score,
-            "smc": smc_score
+        return {
+            "score": min(self.score, 100),
+            "direction": direction,
+            "analysis": self.analysis_results,
+            "price": current_price,
+            "timestamp": get_bdt_time().strftime("%Y-%m-%d %H:%M:%S"),
+            "timeframe": current_timeframe
         }
-    
-    def generate_signal(self, tf_data: Dict[str, pd.DataFrame]) -> Optional[Signal]:
-        """Generate complete trading signal"""
-        try:
-            score, sectors = self.check_confluence(tf_data)
-            
-            if score < 60:
-                return None
-                
-            # Determine direction
-            df = tf_data['5m']
-            current = df.iloc[-1]
-            
-            direction = "UP (CALL) 🟢" if current['EMA_9'] > current['EMA_21'] else "DOWN (PUT) 🔴"
-            
-            # Risk management
-            atr = current['ATR_14']
-            entry_price = current['Close']
-            stop_loss = entry_price - (atr * 1.5) if "CALL" in direction else entry_price + (atr * 1.5)
-            take_profit = entry_price + (atr * 3) if "CALL" in direction else entry_price - (atr * 3)
-            
-            position_size = (2.0 / 100) / (atr / entry_price)  # 2% risk
-            
-            confidence = "HIGH" if score >= 80 else "MEDIUM" if score >= 70 else "LOW"
-            
-            return Signal(
-                symbol=self.symbol,
-                score=score,
-                direction=direction,
-                entry_price=entry_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                position_size=position_size,
-                timeframe="5m",
-                timestamp=get_bdt_time().strftime("%Y-%m-%d %H:%M:%S"),
-                confidence=confidence,
-                analysis_details=sectors
-            )
-            
-        except Exception as e:
-            logger.error(f"Signal generation error: {e}")
-            return None
 
-# --- SESSION & CONFIG MANAGEMENT ---
-class SessionManager:
-    @staticmethod
-    def load_session() -> Dict:
-        try:
-            with open(SESSION_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return {"signals": [], "balance": 10000, "history": []}
-    
-    @staticmethod
-    def save_session(data: Dict):
-        with open(SESSION_FILE, 'w') as f:
-            json.dump(data, f, indent=4)
-    
-    @staticmethod
-    def calculate_metrics(signals: List[Dict]) -> SessionMetrics:
-        if not signals:
-            return SessionMetrics()
-            
-        total = len(signals)
-        wins = sum(1 for s in signals if s.get('outcome') == 'WIN')
-        win_rate = (wins / total) * 100
-        
-        return SessionMetrics(
-            total_signals=total,
-            win_rate=win_rate,
-            avg_score=sum(s.get('score', 0) for s in signals) / total,
-            timestamp=get_bdt_time().strftime("%Y-%m-%d %H:%M:%S")
-        )
-
+# --- GLOBAL FUNCTIONS ---
 def get_bdt_time():
     return datetime.datetime.now(pytz.timezone('Asia/Dhaka'))
 
-# --- PROFESSIONAL UI ---
-def init_page_styles():
-    """Initialize professional page styling"""
-    st.set_page_config(
-        page_title="Zoha Neural-100 Pro Terminal v3.0",
-        page_icon="🤖",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    st.markdown("""
-        <style>
-        /* Professional Dark Theme */
-        .stApp {
-            background: linear-gradient(135deg, #0a0e17 0%, #0d1117 100%);
-            color: #e6edf3;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-        }
-        
-        /* Glassmorphism Cards */
-        .signal-card {
-            background: rgba(22, 27, 34, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(48, 54, 61, 0.8);
-            padding: 25px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .signal-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #00f2ff, #238636);
-        }
-        
-        .signal-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 12px 40px rgba(0, 242, 255, 0.15);
-        }
-        
-        .high-score::before { background: linear-gradient(90deg, #00f2ff, #00ffa3); }
-        .medium-score::before { background: linear-gradient(90deg, #ffa500, #ff8c00); }
-        .low-score::before { background: linear-gradient(90deg, #ff2e63, #ff6b81); }
-        
-        /* Typography */
-        .pair-name {
-            font-size: 22px;
-            font-weight: 700;
-            color: #58a6ff;
-            letter-spacing: 0.5px;
-        }
-        
-        .direction-text {
-            font-size: 28px;
-            font-weight: 800;
-            margin: 15px 0;
-            text-shadow: 0 0 10px currentColor;
-        }
-        
-        .score-box {
-            font-size: 42px;
-            font-weight: 900;
-            background: linear-gradient(90deg, #ffd700, #ffed4e);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        /* Professional Badges */
-        .certified-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 700;
-            background: rgba(35, 134, 54, 0.2);
-            color: #238636;
-            border: 1px solid #238636;
-            margin-left: 10px;
-        }
-        
-        .confidence-badge {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            padding: 6px 14px;
-            border-radius: 50px;
-            font-size: 10px;
-            font-weight: 800;
-        }
-        
-        /* Metrics */
-        .metric-card {
-            background: rgba(22, 27, 34, 0.5);
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid rgba(48, 54, 61, 0.4);
-            text-align: center;
-        }
-        
-        .metric-value {
-            font-size: 32px;
-            font-weight: 800;
-            margin: 10px 0;
-        }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .signal-card {
-            animation: fadeIn 0.5s ease-out;
-        }
-        
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #0d1117; }
-        ::-webkit-scrollbar-thumb {
-            background: linear-gradient(45deg, #00f2ff, #238636);
-            border-radius: 4px;
-        }
-        
-        /* Sidebar */
-        .sidebar .sidebar-content {
-            background: rgba(13, 17, 23, 0.9);
-            backdrop-filter: blur(10px);
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-def render_professional_sidebar() -> Dict:
-    """Render professional sidebar controls"""
-    with st.sidebar:
-        st.markdown("""
-            <div style="text-align: center; padding: 20px; border-bottom: 1px solid #30363d;">
-                <h1 style="margin: 0; font-size: 24px;">🤖 ZOHA PRO</h1>
-                <p style="color: #8b949e; font-size: 12px;">Neural-100 Terminal v3.0</p>
-                <div style="color: #00f2ff; font-size: 14px; margin-top: 10px;">
-                    🕒 """ + get_bdt_time().strftime('%H:%M:%S') + """ BDT
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.divider()
-        
-        # Market Configuration
-        st.header("⚙️ MARKET CONFIG")
-        
-        market_configs = {
-            "Forex (OTC)": {
-                "symbols": "EURUSD=X\nGBP/USD_otc\nUSD/JPY_otc\nUSD/CHF_otc\nAUD/USD_otc\nUSD/CAD_otc\nNZD/USD_otc\nEUR/GBP_otc\nEUR/JPY_otc\nGBP/JPY_otc",
-                "default": ["EURUSD=X", "GBPUSD=X", "USDJPY=X"]
-            },
-            "Cryptocurrency": {
-                "symbols": "BTC-USD\nETH-USD\nBNB-USD\nSOL-USD\nADA-USD\nXRP-USD\nDOGE-USD\nDOT-USD\nMATIC-USD\nAVAX-USD",
-                "default": ["BTC-USD", "ETH-USD"]
-            },
-            "Commodities": {
-                "symbols": "GC=F\nSI=F\nCL=F\nBNO=F\nZC=F\nZW=F\nZM=F\nCT=F\nCC=F\nKC=F",
-                "default": ["GC=F", "SI=F"]
-            },
-            "Stocks": {
-                "symbols": "AAPL\nMSFT\nGOOGL\nAMZN\nTSLA\nMETA\nNVDA\nNFLX\nADBE\nPYPL",
-                "default": ["AAPL", "TSLA"]
-            }
-        }
-        
-        market_type = st.selectbox(
-            "Market Type",
-            list(market_configs.keys()),
-            help="Select market for analysis"
-        )
-        
-        st.subheader("Trading Assets")
-        symbols_text = st.text_area(
-            "Symbols (Yahoo Finance format)",
-            market_configs[market_type]["symbols"],
-            height=150,
-            help="One symbol per line. Use =X for forex, -USD for crypto"
-        )
-        
-        symbol_list = list(set([s.strip().upper() for s in symbols_text.split('\n') if s.strip()]))
-        
-        # Analysis Parameters
-        st.divider()
-        st.header("🎯 ANALYSIS PARAMS")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            min_score = st.slider("Min Score", 60, 95, 75, 1)
-        with col2:
-            risk_per_trade = st.slider("Risk %", 0.5, 5.0, 1.0, 0.1)
-            
-        timeframe = st.select_slider(
-            "Primary Timeframe",
-            options=["1m", "3m", "5m", "15m", "30m", "1h", "4h"],
-            value="5m"
-        )
-        
-        # Execution Controls
-        st.divider()
-        st.header("🚀 EXECUTION")
-        
-        analyze_btn = st.button(
-            "⚡ SCAN MARKETS",
-            use_container_width=True,
-            help="Run multi-asset analysis"
-        )
-        
-        backtest_btn = st.button(
-            "📊 BACKTEST",
-            use_container_width=True,
-            help="Test strategy on historical data"
-        )
-        
-        if st.button("📥 EXPORT RESULTS", use_container_width=True):
-            st.session_state['export'] = True
-            
-        # Session Info
-        st.divider()
-        st.header("📊 SESSION")
-        
-        session_data = SessionManager.load_session()
-        metrics = SessionManager.calculate_metrics(session_data.get('signals', []))
-        
-        with st.container():
-            st.metric("Total Signals", metrics.total_signals)
-            st.metric("Win Rate", f"{metrics.win_rate:.1f}%")
-            st.metric("Avg Score", f"{metrics.avg_score:.1f}")
-            st.metric("Risk/Trade", f"{risk_per_trade}%")
-        
-        st.caption("""
-            <div style="font-size: 10px; color: #666; margin-top: 20px;">
-                ⚠️ This tool is for educational purposes.<br>
-                Trading involves substantial risk.<br>
-                Always use proper risk management.
-            </div>
-        """, unsafe_allow_html=True)
-        
+def load_config():
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
         return {
-            'symbols': symbol_list,
-            'min_score': min_score,
-            'risk_per_trade': risk_per_trade,
-            'timeframe': timeframe,
-            'analyze': analyze_btn,
-            'backtest': backtest_btn
+            "win_rate": 0.0,
+            "total_signals": 0,
+            "profitable_signals": 0,
+            "risk_per_trade": 1.0
         }
 
-def render_signal_card(signal: Signal, idx: int):
-    """Render a professional signal card"""
-    # Color schemes
-    colors = {
-        'CALL': {'text': '#00ffa3', 'bg': 'rgba(0, 255, 163, 0.1)', 'border': '#00ffa3'},
-        'PUT': {'text': '#ff2e63', 'bg': 'rgba(255, 46, 99, 0.1)', 'border': '#ff2e63'},
-        'NEUTRAL': {'text': '#ffa500', 'bg': 'rgba(255, 165, 0, 0.1)', 'border': '#ffa500'}
-    }
-    
-    direction_key = signal.direction.split()[0]
-    color = colors.get(direction_key, colors['NEUTRAL'])
-    
-    # Confidence badge styling
-    conf_colors = {
-        'HIGH': '#00f2ff',
-        'MEDIUM': '#ffa500',
-        'LOW': '#ff2e63'
-    }
-    
-    score_class = "high-score" if signal.score >= 80 else \
-                 "medium-score" if signal.score >= 70 else "low-score"
-    
-    st.markdown(f"""
-        <div class="signal-card {score_class}" style="animation-delay: {idx * 0.1}s;">
-            <div class="confidence-badge" style="
-                background: {conf_colors.get(signal.confidence, '#666')}; 
-                color: #000; 
-                font-weight: 900;
-            ">
-                {signal.confidence}
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <span class="pair-name">{signal.symbol}</span>
-                <span class="certified-badge">
-                    🛡️ CERTIFIED
-                </span>
-            </div>
-            
-            <div class="direction-text" style="color: {color['text']};">
-                {signal.direction}
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0;">
-                <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">ENTRY PRICE</div>
-                    <div style="font-size: 18px; font-weight: bold; color: #ffd700;">
-                        ${signal.entry_price:.5f}
-                    </div>
-                </div>
-                <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">NEURAL SCORE</div>
-                    <div class="score-box">{signal.score}/100</div>
-                </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0;">
-                <div style="background: rgba(255, 46, 99, 0.1); padding: 10px; border-radius: 6px; border: 1px solid #ff2e63;">
-                    <div style="font-size: 10px; color: #8b949e;">STOP LOSS</div>
-                    <div style="font-size: 14px; font-weight: bold; color: #ff2e63;">
-                        ${signal.stop_loss:.5f}
-                    </div>
-                </div>
-                <div style="background: rgba(0, 255, 163, 0.1); padding: 10px; border-radius: 6px; border: 1px solid #00ffa3;">
-                    <div style="font-size: 10px; color: #8b949e;">TAKE PROFIT</div>
-                    <div style="font-size: 14px; font-weight: bold; color: #00ffa3;">
-                        ${signal.take_profit:.5f}
-                    </div>
-                </div>
-            </div>
-            
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin: 15px 0;">
-                <div style="font-size: 11px; color: #8b949e; margin-bottom: 8px;">
-                    💰 POSITION SIZE: <span style="color: #ffd700; font-weight: bold;">
-                        {signal.position_size:.4f} units
-                    </span>
-                </div>
-                <div style="font-size: 10px; color: #666;">
-                    Risk: 2% | R:R 1:2
-                </div>
-            </div>
-            
-            <div style="font-size: 10px; color: #666; text-align: right;">
-                {signal.timestamp} | TF: {signal.timeframe}
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
 
-def render_performance_chart(signals: List[Dict]):
-    """Render equity curve and metrics"""
-    if not signals:
-        return
-        
-    df = pd.DataFrame(signals)
-    if df.empty:
-        return
-        
-    fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=('Equity Curve', 'Signal Score Distribution'),
-        vertical_spacing=0.1,
-        row_heights=[0.6, 0.4]
-    )
-    
-    # Equity curve (simulated)
-    df['equity'] = 10000 + df.index * 10  # Simplified
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df['equity'],
-            mode='lines+markers',
-            name='Equity',
-            line=dict(color='#00f2ff', width=3),
-            fill='tonexty'
-        ),
-        row=1, col=1
-    )
-    
-    # Score histogram
-    fig.add_trace(
-        go.Histogram(
-            x=df['score'],
-            nbinsx=20,
-            name='Score Distribution',
-            marker_color='#58a6ff',
-            opacity=0.7
-        ),
-        row=2, col=1
-    )
-    
-    fig.update_layout(
-        height=500,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0.2)',
-        font=dict(color='#e6edf3'),
-        showlegend=False
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+# --- STREAMLIT UI ---
+st.set_page_config(
+    page_title="Zoha Neural-100 Pro Terminal v2.0",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- MAIN EXECUTION ---
-def main():
-    """Main application loop"""
-    init_page_styles()
+# Custom CSS
+st.markdown("""
+    <style>
+    .stApp { background: #0a0e17; color: #e6edf3; }
+    .signal-card { 
+        background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+        border: 1px solid #30363d; 
+        padding: 25px; border-radius: 15px; 
+        border-top: 4px solid #00f2ff;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0, 242, 255, 0.1);
+        transition: transform 0.2s;
+    }
+    .signal-card:hover { transform: translateY(-5px); }
+    .high-score { border-top-color: #00f2ff; }
+    .medium-score { border-top-color: #ffa500; }
+    .low-score { border-top-color: #ff2e63; }
+    .score-box { font-size: 38px; font-weight: bold; }
+    .pair-name { font-size: 20px; font-weight: bold; color: #58a6ff; }
+    .direction-text { font-size: 28px; font-weight: bold; margin: 15px 0; }
+    .condition-list { font-size: 11px; color: #8b949e; line-height: 1.5; }
+    .legend-badge {
+        display: inline-block; padding: 4px 12px; margin: 2px;
+        border-radius: 20px; font-size: 10px; font-weight: bold;
+        border: 1px solid;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Sidebar Configuration
+with st.sidebar:
+    st.title("🛠️ Control Panel")
+    st.markdown(f"### `{get_bdt_time().strftime('%H:%M:%S')}` BDT")
+    st.divider()
     
-    # Sidebar controls
-    controls = render_professional_sidebar()
+    # Market Selection
+    market_type = st.selectbox(
+        "Market Type", 
+        ["Forex", "Crypto", "Stocks", "Commodities"],
+        help="Select the market for analysis"
+    )
     
-    # Main header
-    st.markdown("""
-        <div style="text-align: center; padding: 20px 0;">
-            <h1 style="margin: 0; font-size: 36px; background: linear-gradient(90deg, #00f2ff, #ffd700); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                ZOHA NEURAL-100 PRO TERMINAL
-            </h1>
-            <p style="color: #8b949e; font-size: 14px; margin-top: 10px;">
-                Institutional-Grade Multi-Timeframe Analysis • Real-Time Signal Generation
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
+    # Symbol Input
+    st.subheader("Asset Configuration")
+    symbols = st.text_area(
+        "Trading Symbols (one per line)",
+        "EURUSD=X\nGBPUSD=X\nBTC-USD\nETH-USD\nGC=F",
+        help="Use Yahoo Finance symbols. Add '=X' for forex, '-USD' for crypto"
+    )
     
-    # Analysis Execution
-    if controls['analyze']:
-        if not controls['symbols']:
-            st.error("❌ No symbols configured. Please add trading symbols in sidebar.")
-            return
-            
-        # Status area
-        status_container = st.empty()
+    symbol_list = [s.strip() for s in symbols.split('\n') if s.strip()]
+    
+    # Analysis Settings
+    st.subheader("Analysis Parameters")
+    min_score_threshold = st.slider(
+        "Minimum Signal Score", 60, 95, 75,
+        help="Higher values = fewer but higher quality signals"
+    )
+    
+    timeframe = st.select_slider(
+        "Primary Timeframe",
+        options=["1m", "5m", "15m", "30m", "1h", "4h"],
+        value="5m"
+    )
+    
+    # Risk Management
+    st.subheader("Risk Management")
+    risk_percent = st.slider("Risk per Trade (%)", 0.5, 5.0, 1.0, 0.1)
+    
+    # Action Buttons
+    st.divider()
+    analyze_btn = st.button("🚀 Analyze Markets", use_container_width=True)
+    backtest_btn = st.button("📈 Run Backtest", use_container_width=True)
+    clear_cache = st.button("🗑️ Clear Cache")
+    
+    if clear_cache:
+        st.cache_data.clear()
+        st.success("Cache cleared!")
+
+# Main Area
+st.title("🤖 ZOHA NEURAL-100 PRO TERMINAL v2.0")
+st.markdown("""
+    <p style='color: #8b949e; font-size: 14px;'>
+    Advanced Multi-Timeframe Analysis | Real Technical Indicators | Risk Management
+    </p>
+""", unsafe_allow_html=True)
+
+# Performance Metrics
+config = load_config()
+st.divider()
+metrics = st.columns(4)
+with metrics[0]:
+    st.metric("Session Win Rate", f"{config['win_rate']:.1f}%")
+with metrics[1]:
+    st.metric("Total Signals", config['total_signals'])
+with metrics[2]:
+    st.metric("Profitable", config['profitable_signals'])
+with metrics[3]:
+    st.metric("Risk/Trade", f"{config['risk_per_trade']:.1f}%")
+
+st.divider()
+
+# Analysis Results Area
+if analyze_btn:
+    if not symbol_list:
+        st.error("❌ No symbols configured. Add symbols in the sidebar.")
+    else:
         results_container = st.container()
+        cols = st.columns(3)
+        count = 0
         
-        signals = []
-        progress = 0
-        
-        for idx, symbol in enumerate(controls['symbols']):
-            progress = (idx + 1) / len(controls['symbols'])
-            status_container.info(f"🔍 Analyzing {symbol}... ({idx+1}/{len(controls['symbols'])})")
-            
-            try:
-                engine = NeuralAnalysisEngine(symbol)
-                tf_data = engine.fetch_multi_timeframe(symbol)
+        for symbol in symbol_list:
+            with st.spinner(f"Analyzing {symbol}..."):
+                engine = TechnicalAnalysisEngine(symbol)
+                result = engine.calculate_signal_score(timeframe)
                 
-                if not any(not df.empty for df in tf_data.values()):
-                    st.warning(f"⚠️ No data for {symbol}")
+                if "error" in result:
+                    st.warning(f"⚠️ {symbol}: {result['error']}")
                     continue
                 
-                signal = engine.generate_signal(tf_data)
-                
-                if signal and signal.score >= controls['min_score']:
-                    signals.append(signal)
-                    logger.info(f"Generated signal for {symbol}: {signal.score}/100")
-                    
-            except Exception as e:
-                logger.error(f"Analysis failed for {symbol}: {e}")
-                continue
+                if result['score'] >= min_score_threshold:
+                    with cols[count % 3]:
+                        # Score-based styling
+                        score_class = "high-score" if result['score'] >= 80 else \
+                                     "medium-score" if result['score'] >= 70 else "low-score"
+                        
+                        direction_color = "#00ffa3" if "CALL" in result['direction'] else \
+                                        "#ff2e63" if "PUT" in result['direction'] else "#ffa500"
+                        
+                        # Condition list
+                        conditions_html = "<br>".join([
+                            f"{'✅' if 'PASSED' in v else '❌'} {k}: {v}"
+                            for k, v in result['analysis'].items()
+                        ])
+                        
+                        st.markdown(f"""
+                            <div class="signal-card {score_class}">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span class="pair-name">{symbol}</span>
+                                    <span class="legend-badge" style="background: rgba(35, 134, 54, 0.2); color: #238636; border-color: #238636;">
+                                        Score: {result['score']}
+                                    </span>
+                                </div>
+                                <div class="direction-text" style="color:{direction_color};">
+                                    {result['direction']}
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:end;">
+                                    <div>
+                                        <div style="font-size:11px; color:#8b949e;">NEURAL SCORE</div>
+                                        <div class="score-box" style="color: {'#00f2ff' if result['score'] >= 80 else '#ffa500'};">
+                                            {result['score]}
+                                        </div>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <div style="font-size:11px; color:#8b949e;">CURRENT PRICE</div>
+                                        <div style="font-size:18px; font-weight:bold;">${result['price']:.5f}</div>
+                                    </div>
+                                </div>
+                                <hr style="border-color:#30363d; margin: 15px 0;">
+                                <div class="condition-list">
+                                    {conditions_html}
+                                </div>
+                                <div style="margin-top: 15px; font-size: 10px; color: #666;">
+                                    📊 {result['timestamp']} | TF: {result['timeframe']}
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Risk calculation
+                        atr = result.get('atr', 0.001)
+                        position_size = (risk_percent / 100) / atr if atr > 0 else 0
+                        
+                        with st.expander("📊 Risk Calculation"):
+                            st.write(f"**Stop Loss:** {result['price'] - atr:.5f}")
+                            st.write(f"**Take Profit:** {result['price'] + atr*2:.5f}")
+                            st.write(f"**Position Size:** {position_size:.4f} units")
+                        
+                        count += 1
         
-        status_container.success(f"✅ Analysis Complete! {len(signals)} high-quality signals found.")
-        
-        # Display signals
-        if signals:
-            signals.sort(key=lambda x: x.score, reverse=True)
-            
-            cols = st.columns(3)
-            for idx, signal in enumerate(signals):
-                with cols[idx % 3]:
-                    render_signal_card(signal, idx)
-            
-            # Save session
-            session_data = SessionManager.load_session()
-            session_data['signals'].extend([s.__dict__ for s in signals])
-            SessionManager.save_session(session_data)
-            
-            # Performance chart
-            st.divider()
-            st.subheader("📊 Performance Analytics")
-            render_performance_chart(session_data['signals'])
-            
-            # Export functionality
-            if st.session_state.get('export'):
-                df_export = pd.DataFrame([s.__dict__ for s in signals])
-                csv = df_export.to_csv(index=False)
-                st.download_button(
-                    "📥 Download Signals (CSV)",
-                    csv,
-                    f"signals_{get_bdt_time().strftime('%Y%m%d_%H%M%S')}.csv",
-                    "text/csv",
-                    use_container_width=True
-                )
-        
-        else:
-            st.warning(f"""
-                ⚠️ No signals met the minimum threshold of {controls['min_score']}/100.
-                
-                **Suggestions:**
-                • Lower the minimum score slider
-                • Check your symbol list format
-                • Verify market hours
-            """)
-    
-    # Backtest Section
-    if controls['backtest']:
-        st.divider()
-        st.subheader("📈 Professional Backtesting Engine")
-        
-        with st.form("backtest_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                bt_symbol = st.selectbox("Symbol", controls['symbols'])
-            with col2:
-                bt_period = st.slider("Backtest Period (Days)", 7, 365, 30)
-            
-            bt_timeframe = st.select_slider(
-                "Backtest Timeframe",
-                options=["1m", "5m", "15m", "1h", "4h", "1d"],
-                value="30m"
-            )
-            
-            submitted = st.form_submit_button("🚀 Run Backtest", use_container_width=True)
-            
-            if submitted:
-                with st.spinner("Running institutional backtest..."):
-                    # Placeholder for backtest logic
-                    st.success("Backtest complete! (Advanced backtester coming in v3.1)")
-                    st.plotly_chart(go.Figure(
-                        data=[go.Scatter(x=list(range(100)), y=[10000 + i*10 for i in range(100)])],
-                        layout=go.Layout(title="Simulated Equity Curve")
-                    ))
+        if count == 0:
+            st.warning(f"⚠️ No signals met the minimum score threshold of {min_score_threshold}")
 
-if __name__ == "__main__":
-    main()
+# Backtesting Section
+if backtest_btn:
+    st.subheader("📈 Backtesting Results")
+    
+    symbol = st.selectbox("Select Symbol for Backtest", symbol_list)
+    days = st.slider("Backtest Period (Days)", 1, 30, 7)
+    
+    if st.button("Start Backtest"):
+        with st.spinner("Running backtest..."):
+            engine = TechnicalAnalysisEngine(symbol)
+            df = engine.fetch_data(f"{days}d", "5m")
+            
+            if df.empty:
+                st.error("No historical data for backtesting")
+            else:
+                # Simulate signals
+                signals = []
+                balance = 1000
+                wins = 0
+                total = 0
+                
+                for i in range(50, len(df), 5):
+                    current_price = df['Close'].iloc[i]
+                    # Simplified signal generation for backtest
+                    engine.score = 0
+                    mock_result = {
+                        "score": np.random.randint(70, 101),
+                        "direction": "UP" if df['Close'].iloc[i] > df['SMA_20'].iloc[i] else "DOWN",
+                        "price": current_price
+                    }
+                    
+                    # Simulate outcome
+                    outcome = "WIN" if mock_result['direction'] == "UP" and df['Close'].iloc[min(i+5, len(df)-1)] > current_price else "LOSS"
+                    if outcome == "WIN":
+                        wins += 1
+                    total += 1
+                    balance += 10 if outcome == "WIN" else -10
+                    signals.append(outcome)
+                
+                # Display results
+                win_rate = (wins / total * 100) if total > 0 else 0
+                st.metric("Backtest Win Rate", f"{win_rate:.2f}%")
+                st.metric("Final Balance", f"${balance:.2f}")
+                
+                # Update config
+                config['win_rate'] = win_rate
+                config['total_signals'] += total
+                config['profitable_signals'] += wins
+                save_config(config)
+                
+                # Chart
+                st.bar_chart(pd.Series(signals).value_counts())
+
+# Footer
+st.divider()
+st.markdown("""
+    <div style='text-align: center; color: #666; font-size: 11px;'>
+        <p>⚠️ Trading involves substantial risk. This tool is for educational purposes only.</p>
+        <p>Always backtest strategies and use proper risk management. Never risk more than you can afford to lose.</p>
+        <p>v2.0 | Multi-Timeframe Analysis Engine</p>
+    </div>
+""", unsafe_allow_html=True)
