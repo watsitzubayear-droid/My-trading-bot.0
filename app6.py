@@ -134,7 +134,7 @@ def get_bdt_time():
 # --- ২. ENHANCED DATABASE ---
 QUOTEX_DATABASE = {
     "🌐 Currencies (OTC)": [
-        "GBP/USD_otc", "USD/INR_otc", "USD/BRL_otc", 
+        "EUR/USD_otc", "GBP/USD_otc", "USD/JPY_otc", "USD/INR_otc", "USD/BRL_otc", 
         "USD/PKR_otc", "AUD/CAD_otc", "NZD/USD_otc", "GBP/JPY_otc", "EUR/GBP_otc",
         "USD/TRY_otc", "USD/EGP_otc", "USD/BDT_otc", "AUD/CHF_otc", "CAD/JPY_otc"
     ],
