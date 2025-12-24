@@ -451,6 +451,17 @@ def get_theme_css():
         font-weight: bold;
         float: right;
     }
+    
+    .gap-indicator {
+        background: rgba(255, 165, 0, 0.2);
+        border: 1px solid #ffaa00;
+        color: #ffaa00;
+        padding: 4px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: bold;
+        float: right;
+    }
     </style>
     """
 
@@ -479,8 +490,8 @@ with clock_col2:
 st.markdown("---")  # Separator after clock
 
 # Header
-st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.3</h1>', unsafe_allow_html=True)
-st.write("🧠 DUAL-FORCE SCAN ENGINE | 30 HIGHEST CONFIDENCE TRADES IN 2 HOURS | SORTED BY TIME")
+st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.4</h1>', unsafe_allow_html=True)
+st.write("🧠 DUAL-FORCE SCAN ENGINE | 3-MIN GAP ENFORCED | 30 TRADES IN 2 HOURS")
 
 # --- ৬. SIDEBAR ---
 with st.sidebar:
@@ -516,7 +527,7 @@ with st.sidebar:
     st.header("🔮 PREDICTION SETTINGS")
     
     st.subheader("📊 2-Hour High-Frequency Scan")
-    st.caption("Scans every minute, selects top 30 highest confidence trades")
+    st.caption("Scans every minute, 3-min minimum gap between trades for same pair")
     
     st.subheader("⏰ Live 1M Candle Prediction")
     st.caption("Immediate next candle prediction")
@@ -529,7 +540,7 @@ with st.sidebar:
     st.button("🚀 EXECUTE LIVE PREDICTION", use_container_width=True, 
               on_click=set_scan_mode, args=("live",))
     
-    st.button("🔮 GENERATE 2-HOUR TOP 30", use_container_width=True,
+    st.button("🔮 GENERATE 2-HOUR GAPPED TRADES", use_container_width=True,
               on_click=set_scan_mode, args=("future",))
     
     st.divider()
@@ -541,7 +552,7 @@ with st.sidebar:
         st.rerun()
     
     st.metric("Live Predictions", len(st.session_state.candle_predictions))
-    st.metric("2-Hour Top 30", len(st.session_state.future_signals))
+    st.metric("2-Hour Gapped Trades", len(st.session_state.future_signals))
 
 # --- ৭. DISPLAY FUNCTIONS ---
 def display_live_predictions():
@@ -596,15 +607,14 @@ def display_future_predictions():
     if not st.session_state.future_signals:
         return
     
-    st.success(f"🔮 Top 30 Trades Sorted by Time (2-Hour Scan)")
+    st.success(f"🔮 Top 30 Trades with 3-Minute Gaps (2-Hour Scan)")
     
-    # FIXED: Sort by scheduled_time instead of confidence
-    sorted_signals = sorted(st.session_state.future_signals, key=lambda x: x['scheduled_time'])
+    # Sort by scheduled_time (already sorted from the scan logic)
+    sorted_signals = st.session_state.future_signals
     
     cols = st.columns(3)
     for idx, signal in enumerate(sorted_signals):
         with cols[idx % 3]:
-            # FIXED: Use get() method with fallback to prevent KeyError
             trade_decision = signal.get('trade_decision', signal.get('direction', 'CALL'))
             direction_class = "call-signal" if trade_decision == "CALL" else "put-signal"
             
@@ -618,9 +628,14 @@ def display_future_predictions():
             
             countdown_str = f"{minutes_remaining}m" if minutes_remaining > 0 else "NOW"
             
+            # Show gap info in badge
+            gap_text = ""
+            if 'minutes_since_last' in signal:
+                gap_text = f"Gap: {signal['minutes_since_last']}m"
+            
             html = f"""
 <div class="signal-card future-card">
-    <div class="pair-name">{signal['pair']} <span class="top-30-badge">#{idx+1}</span></div>
+    <div class="pair-name">{signal['pair']} <span class="gap-indicator">{gap_text}</span></div>
     <div class="timestamp-display">🕒 {signal['scheduled_time']}</div>
     <div style="display: flex; justify-content: space-between;">
         <div>
@@ -698,12 +713,22 @@ elif st.session_state.scan_mode == "future":
     scan_interval = 1  # Scan every minute
     
     all_predictions = []
+    last_trade_time = {}  # Track last trade time for each pair
     
     for minute in range(total_minutes):
         elapsed = minute + 1
-        status_text.text(f"🔮 2-Hour Scan Progress: {elapsed}/120 minutes | Gathering all signals...")
+        status_text.text(f"🔮 2-Hour Scan Progress: {elapsed}/120 minutes | Enforcing 3-min gaps...")
         
         for pair in selected_assets:
+            # Check if we can trade (3 min gap)
+            current_time = get_bdt_time()
+            target_time = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=minute + 1)
+            
+            if pair in last_trade_time:
+                time_diff = (target_time - last_trade_time[pair]).total_seconds() / 60
+                if time_diff < 3:
+                    continue  # Skip this minute, not enough gap
+            
             # Generate signals for each pair at this minute
             if st.session_state.direction_filter == "Both (UP & DOWN) - Winner Selection":
                 prediction = engine.generate_both_predictions(pair)
@@ -712,25 +737,30 @@ elif st.session_state.scan_mode == "future":
             else:  # DOWN (PUT) Only
                 prediction = engine.predict_single_direction(pair, "PUT")
             
-            # Add timestamp for this prediction
-            current_time = get_bdt_time()
-            target_time = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=minute + 1)
+            # Add timestamp and gap info
             prediction['scheduled_time'] = target_time.strftime("%Y-%m-%d %H:%M:%S")
             prediction['minute_offset'] = minute
             
             # Store if meets minimum score
             if prediction['score'] >= min_score:
+                # Calculate gap since last trade
+                if pair in last_trade_time:
+                    gap = int((target_time - last_trade_time[pair]).total_seconds() / 60)
+                    prediction['minutes_since_last'] = gap
+                else:
+                    prediction['minutes_since_last'] = 0  # First trade
+                
                 all_predictions.append(prediction)
+                last_trade_time[pair] = target_time  # Update last trade time
         
         progress_bar.progress(int((elapsed / total_minutes) * 100))
         time.sleep(0.05)  # Small delay for UI responsiveness
     
-    # After 2-hour scan, select TOP 30 by confidence
+    # After 2-hour scan, select TOP 30 by time (chronological)
     if all_predictions:
-        # FIXED: Sort by time (scheduled_time) instead of confidence
         top_30 = sorted(all_predictions, key=lambda x: x['scheduled_time'])[:30]
         st.session_state.future_signals = top_30
-        st.success(f"✅ Found {len(all_predictions)} signals, selected TOP 30 by time!")
+        st.success(f"✅ Found {len(all_predictions)} signals with 3-min gaps, selected TOP 30!")
     else:
         st.warning("⚠️ No signals met the threshold during 2-hour scan.")
     
@@ -750,8 +780,8 @@ if st.session_state.candle_predictions:
 
 # Future Predictions Section
 if st.session_state.future_signals:
-    st.subheader("⏰ TOP 30 TRADES SORTED BY TIME (2-Hour Scan)")
-    st.caption("Chronological order | Direction filter: " + st.session_state.direction_filter)
+    st.subheader("⏰ TOP 30 TRADES WITH 3-MIN GAPS (2-Hour Scan)")
+    st.caption("Chronological order | 3-minute minimum gap enforced per pair")
     display_future_predictions()
 
 # --- ১০. STATISTICS ---
@@ -764,7 +794,7 @@ with col1:
     st.metric("Live Predictions", live_count, "Active")
 with col2:
     future_count = len(st.session_state.future_signals)
-    st.metric("Top 30 Selected", future_count, "Chronological")
+    st.metric("Gapped Trades", future_count, "3-min gap")
 with col3:
     st.metric("Scan Coverage", "120 min", "Every minute")
 with col4:
@@ -789,9 +819,9 @@ if st.session_state.candle_predictions or st.session_state.future_signals:
             if st.session_state.future_signals:
                 df_future = pd.DataFrame(st.session_state.future_signals)
                 st.download_button(
-                    "🔮 Download Top 30 Predictions",
+                    "🔮 Download Gapped Predictions",
                     df_future.to_csv(index=False).encode('utf-8'),
-                    "top_30_predictions.csv",
+                    "gapped_predictions.csv",
                     "text/csv",
                     use_container_width=True
                 )
@@ -820,6 +850,6 @@ st.markdown(clock_script, unsafe_allow_html=True)
 st.divider()
 st.markdown("""
 <div style="text-align:center; color:#8b949e; font-size:12px;">
-    ⚡ ZOHA NEURAL-100 v6.3 | Dual-Force Scan Engine | Top 30 Sorted by Time
+    ⚡ ZOHA NEURAL-100 v6.4 | Dual-Force Scan Engine | 3-Min Gap Enforced | v6.4
 </div>
 """, unsafe_allow_html=True)
