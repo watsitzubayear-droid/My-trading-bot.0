@@ -479,8 +479,8 @@ with clock_col2:
 st.markdown("---")  # Separator after clock
 
 # Header
-st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.2</h1>', unsafe_allow_html=True)
-st.write("🧠 DUAL-FORCE SCAN ENGINE | 30 HIGHEST CONFIDENCE TRADES IN 2 HOURS | FIXED")
+st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.3</h1>', unsafe_allow_html=True)
+st.write("🧠 DUAL-FORCE SCAN ENGINE | 30 HIGHEST CONFIDENCE TRADES IN 2 HOURS | SORTED BY TIME")
 
 # --- ৬. SIDEBAR ---
 with st.sidebar:
@@ -592,14 +592,14 @@ def display_live_predictions():
                         st.caption(desc)
 
 def display_future_predictions():
-    """Display top 30 predictions sorted by confidence"""
+    """Display top 30 predictions sorted by time (chronological order)"""
     if not st.session_state.future_signals:
         return
     
-    st.success(f"🔮 Top 30 Highest Confidence Trades (2-Hour Scan)")
+    st.success(f"🔮 Top 30 Trades Sorted by Time (2-Hour Scan)")
     
-    # Sort by confidence descending
-    sorted_signals = sorted(st.session_state.future_signals, key=lambda x: x['confidence'], reverse=True)
+    # FIXED: Sort by scheduled_time instead of confidence
+    sorted_signals = sorted(st.session_state.future_signals, key=lambda x: x['scheduled_time'])
     
     cols = st.columns(3)
     for idx, signal in enumerate(sorted_signals):
@@ -727,10 +727,10 @@ elif st.session_state.scan_mode == "future":
     
     # After 2-hour scan, select TOP 30 by confidence
     if all_predictions:
-        # Sort by confidence descending
-        top_30 = sorted(all_predictions, key=lambda x: x['confidence'], reverse=True)[:30]
+        # FIXED: Sort by time (scheduled_time) instead of confidence
+        top_30 = sorted(all_predictions, key=lambda x: x['scheduled_time'])[:30]
         st.session_state.future_signals = top_30
-        st.success(f"✅ Found {len(all_predictions)} signals, selected TOP 30 by confidence!")
+        st.success(f"✅ Found {len(all_predictions)} signals, selected TOP 30 by time!")
     else:
         st.warning("⚠️ No signals met the threshold during 2-hour scan.")
     
@@ -750,8 +750,8 @@ if st.session_state.candle_predictions:
 
 # Future Predictions Section
 if st.session_state.future_signals:
-    st.subheader("🔥 TOP 30 HIGHEST CONFIDENCE TRADES (2-Hour Scan)")
-    st.caption("Sorted by confidence | Direction filter: " + st.session_state.direction_filter)
+    st.subheader("⏰ TOP 30 TRADES SORTED BY TIME (2-Hour Scan)")
+    st.caption("Chronological order | Direction filter: " + st.session_state.direction_filter)
     display_future_predictions()
 
 # --- ১০. STATISTICS ---
@@ -764,7 +764,7 @@ with col1:
     st.metric("Live Predictions", live_count, "Active")
 with col2:
     future_count = len(st.session_state.future_signals)
-    st.metric("Top 30 Selected", future_count, "Best of 2H")
+    st.metric("Top 30 Selected", future_count, "Chronological")
 with col3:
     st.metric("Scan Coverage", "120 min", "Every minute")
 with col4:
@@ -820,6 +820,6 @@ st.markdown(clock_script, unsafe_allow_html=True)
 st.divider()
 st.markdown("""
 <div style="text-align:center; color:#8b949e; font-size:12px;">
-    ⚡ ZOHA NEURAL-100 v6.2 | Dual-Force Scan Engine | Top 30 Selection | Bug Fixed
+    ⚡ ZOHA NEURAL-100 v6.3 | Dual-Force Scan Engine | Top 30 Sorted by Time
 </div>
 """, unsafe_allow_html=True)
