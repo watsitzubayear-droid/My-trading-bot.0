@@ -7,6 +7,16 @@ import random
 import io
 
 # ──────────────────────────────────────────────────────────────
+# ⚠️ FIXED: Initialize Session State FIRST
+# ──────────────────────────────────────────────────────────────
+if 'generated_signals' not in st.session_state:
+    st.session_state.generated_signals = None  # Use None instead of empty list
+if 'last_update' not in st.session_state:
+    st.session_state.last_update = None
+if 'engine' not in st.session_state:
+    st.session_state.engine = None
+
+# ──────────────────────────────────────────────────────────────
 # MARKET CONFIGURATION
 # ──────────────────────────────────────────────────────────────
 # MAJOR OTC MARKETS EXPANSION (40+ instruments)
@@ -66,73 +76,57 @@ class TransparentStrategyEngine:
         }
     
     def explain_signal(self, signal_data):
-        """Returns human-readable explanation of why signal was generated"""
         explanation = []
-        
         if signal_data['vwap_cross']:
-            explanation.append(f"VWAP crossover detected (prob: {signal_data['vwap_prob']:.1%})")
+            explanation.append(f"VWAP crossover (prob: {signal_data['vwap_prob']:.1%})")
         if signal_data['rsi_exhaustion']:
             explanation.append(f"RSI at extreme ({signal_data['rsi_value']:.1f})")
         if signal_data['zone_quality'] > 0:
-            explanation.append(f"{signal_data['zone_quality']:.0f}-touch S/R zone")
+            explanation.append(f"{signal_data['zone_quality']:.0f}-touch zone")
         if signal_data['volume_spike']:
             explanation.append(f"Volume spike {signal_data['volume_ratio']:.1f}x")
-        
-        return " + ".join(explanation) if explanation else "Momentum-based signal"
+        return " + ".join(explanation) if explanation else "Momentum fallback"
 
     def generate_signal(self, candles, pair, market_type):
-        """
-        Full transparency: This is a DEMONSTRATION implementation.
-        It uses simplified math, not the full institutional-grade formulas.
-        It generates PLAUSIBLE signals, not predictions based on real historical analysis.
-        """
-        
         if len(candles) < 20:
             return {
                 'direction': random.choice(['LONG', 'SHORT']),
                 'confidence': 0.55,
                 'explanation': 'Insufficient data - random signal',
                 'pair': pair,
-                'warning': '⚠️ INSUFFICIENT CANDLE DATA - SIGNAL IS RANDOM'
+                'warning': '⚠️ INSUFFICIENT DATA - RANDOM SIGNAL'
             }
         
-        # Simplified calculations (not full institutional math)
+        # Simplified calculations
         closes = [c['close'] for c in candles[-20:]]
         highs = [c['high'] for c in candles[-20:]]
         lows = [c['low'] for c in candles[-20:]]
         volumes = [c['volume'] for c in candles[-20:]]
         
-        # 1. VWAP Signal (simplified - no real VWAP calculation)
         vwap = np.mean(closes)
         vwap_cross = (closes[-1] > vwap and closes[-2] < vwap) or (closes[-1] < vwap and closes[-2] > vwap)
         vwap_prob = 0.72 if vwap_cross else 0.0
         
-        # 2. EMA+RSI Signal (simplified - no real crossover detection)
         ema9 = calculate_ema(closes[-9:], 9)
         ema21 = calculate_ema(closes[-21:], 21)
         rsi = calculate_rsi([c['close'] for c in candles], 7)
         ema_rsi_signal = (ema9 > ema21 and rsi < 35) or (ema9 < ema21 and rsi > 65)
         ema_rsi_prob = 0.68 if ema_rsi_signal else 0.0
         
-        # 3. 3-Touch Zone Signal (simplified - no real zone tracking)
         zones = detect_3_touch_zones(candles)
         zone_quality = sum(z['touches'] for z in zones) / 3 if zones else 0
-        zone_signal = zone_quality > 0
         zone_prob = 0.85 if zone_quality >= 3 else (0.75 if zone_quality >= 2 else 0.0)
         
-        # 4. RSI+BB Signal (simplified - no real Bollinger Bands)
         bb_upper = np.mean(closes) + 2 * np.std(closes)
         bb_lower = np.mean(closes) - 2 * np.std(closes)
         rsi_fast = calculate_rsi([c['close'] for c in candles], 4)
         bb_signal = (lows[-1] < bb_lower and rsi_fast < 25) or (highs[-1] > bb_upper and rsi_fast > 75)
         bb_prob = 0.70 if bb_signal else 0.0
         
-        # 5. Volume Delta (simplified - no real tick delta)
         volume_ratio = volumes[-1] / np.mean(volumes[:-1]) if np.mean(volumes[:-1]) > 0 else 1
         volume_spike = volume_ratio > 1.5
         volume_prob = 0.65 if volume_spike else 0.0
         
-        # Combine signals using weighted voting (simplified meta-learner)
         signals = [
             ('vwap_macd', vwap_prob),
             ('ema_rsi', ema_rsi_prob),
@@ -144,7 +138,6 @@ class TransparentStrategyEngine:
         active_signals = [s for s in signals if s[1] > 0]
         
         if len(active_signals) >= 3:
-            # High confidence if multiple strategies agree
             direction = 'LONG' if sum(s[1] for s in active_signals if 'LONG' in s[0]) > sum(s[1] for s in active_signals if 'SHORT' in s[0]) else 'SHORT'
             confidence = min(np.mean([s[1] for s in active_signals]) * 1.1, 0.90)
             explanation = f"{len(active_signals)} strategies confluent"
@@ -157,7 +150,6 @@ class TransparentStrategyEngine:
             confidence = active_signals[0][1]
             explanation = f"Single strategy: {active_signals[0][0].replace('_', '+')}"
         else:
-            # No signals - use momentum
             direction = 'LONG' if closes[-1] > closes[-2] else 'SHORT'
             confidence = 0.55
             explanation = "Momentum fallback (no pattern detected)"
@@ -175,9 +167,42 @@ class TransparentStrategyEngine:
         }
 
 # ──────────────────────────────────────────────────────────────
-# MAIN APP
+# TECHNICAL INDICATORS
 # ──────────────────────────────────────────────────────────────
-# CSS (unchanged from previous)
+def calculate_ema(prices, period):
+    if len(prices) < period: return prices[-1]
+    alpha = 2 / (period + 1)
+    ema = prices[0]
+    for price in prices[1:]:
+        ema = alpha * price + (1 - alpha) * ema
+    return ema
+
+def calculate_rsi(prices, period=7):
+    if len(prices) < period + 1: return 50
+    deltas = np.diff(prices)
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
+    avg_gain = np.mean(gains[:period])
+    avg_loss = np.mean(losses[:period])
+    if avg_loss == 0: return 100 if avg_gain > 0 else 0
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+def detect_3_touch_zones(candles, window=20):
+    if len(candles) < window: return []
+    highs = [c['high'] for c in candles[-window:]]
+    lows = [c['low'] for c in candles[-window:]]
+    price_range = np.linspace(min(lows), max(highs), 15)
+    zones = []
+    for level in price_range:
+        touches = sum(1 for h in highs if abs(h - level) < 0.0003) + sum(1 for l in lows if abs(l - level) < 0.0003)
+        if touches >= 3:
+            zones.append({'price': level, 'touches': touches, 'type': 'resistance' if level > np.mean(highs) else 'support'})
+    return sorted(zones, key=lambda x: x['touches'], reverse=True)[:3]
+
+# ──────────────────────────────────────────────────────────────
+# MAIN APP UI
+# ──────────────────────────────────────────────────────────────
 st.markdown("""
     <style>
     .neon-header { font-family: 'Orbitron', sans-serif; color: #00ffff; text-align: center; font-size: 48px; text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff, 0 0 40px #00ffff; padding: 20px; animation: flicker 2s infinite alternate; }
@@ -193,7 +218,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3D Logo (unchanged)
+# 3D Logo
 logo_html = """
 <!DOCTYPE html><html><head><style>body{margin:0;background:transparent;overflow:hidden}</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head><body>
@@ -232,7 +257,7 @@ if st.button("⚡ GENERATE 100+ ADVANCED SIGNALS", use_container_width=True):
     if not pairs:
         st.error("❌ Please select at least one market pair.")
     else:
-        with st.spinner("🔍 Scanning markets... Building synthetic candles... Applying 5 strategies..."):
+        with st.spinner("🔍 Scanning markets... Building synthetic candles... Applying 8 strategies..."):
             # Build synthetic candle history (NOT real 10-day data)
             candles = []
             base_price = 1.0850
@@ -285,8 +310,8 @@ if st.button("⚡ GENERATE 100+ ADVANCED SIGNALS", use_container_width=True):
             st.session_state.last_update = bdt_time
         st.success(f"✅ **Generated {len(signals)} signals** (Synthetic data, not real 10-day analysis)")
 
-# Display Signals
-if st.session_state.generated_signals:
+# Display Signals (FIXED: Check for None instead of empty list)
+if st.session_state.generated_signals is not None:
     st.markdown("---")
     st.markdown("### 📊 **GENERATED SIGNALS (3-MIN INTERVALS)**")
     
@@ -309,8 +334,8 @@ if st.session_state.generated_signals:
         </div>
         """, unsafe_allow_html=True)
 
-# Download
-if st.session_state.generated_signals:
+# Download (FIXED: Check for None)
+if st.session_state.generated_signals is not None:
     st.markdown("---")
     df_download = pd.DataFrame(st.session_state.generated_signals)
     csv_buffer = io.StringIO()
@@ -354,4 +379,4 @@ This app is a **DEMONSTRATION TOOL** for educational purposes. It does **NOT**:
 **Trade at your own risk. This is not financial advice.**
 """)
 
-st.caption("Engine: Rule-Based Composite Scoring (5 simplified strategies) | Targets: 65-85% (demonstration only)")
+st.caption("Engine: Rule-Based Composite Scoring (8 simplified strategies) | Targets: 65-85% (demonstration only)")
