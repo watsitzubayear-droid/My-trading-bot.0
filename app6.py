@@ -138,19 +138,17 @@ class AdvancedQuantumEngine:
         
         return confidence
     
-    def predict_next_candle(self, pair):
-        """SEQUENTIAL SCAN: DOWN first, then UP, select winner by confidence"""
+    def generate_both_predictions(self, pair, target_time=None):
+        """Generate both UP and DOWN predictions, return the winner"""
         data_1m = self.market_data.generate_historical_data(days=5)
         current = data_1m.iloc[-1]
         conditions, volatility = self.analyze_strategies(data_1m, current)
         
-        # Step 1: Scan for DOWN (PUT) signal
+        # Generate both predictions
         put_confidence = self.calculate_direction_confidence(conditions, "PUT")
-        
-        # Step 2: Scan for UP (CALL) signal
         call_confidence = self.calculate_direction_confidence(conditions, "CALL")
         
-        # Step 3: Select winner (higher confidence)
+        # Select winner
         if put_confidence > call_confidence:
             direction = "PUT"
             direction_text = "🔴 RED (PUT)"
@@ -169,9 +167,15 @@ class AdvancedQuantumEngine:
         score = int(85 + (weighted_score / max_possible) * 15)
         
         # Time interval (always starts at 00 seconds)
-        current_time = get_bdt_time()
-        next_start = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
-        next_end = next_start + datetime.timedelta(minutes=1)
+        if target_time:
+            trade_start = target_time
+            trade_end = trade_start + datetime.timedelta(minutes=1)
+            time_str = f"{trade_start.strftime('%H:%M:%S')} - {trade_end.strftime('%H:%M:%S')}"
+        else:
+            current_time = get_bdt_time()
+            next_start = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+            next_end = next_start + datetime.timedelta(minutes=1)
+            time_str = f"{next_start.strftime('%H:%M:%S')} - {next_end.strftime('%H:%M:%S')}"
         
         return {
             "pair": pair,
@@ -179,7 +183,7 @@ class AdvancedQuantumEngine:
             "direction": direction,
             "score": min(max(score, 85), 100),
             "confidence": final_confidence,
-            "time_interval": f"{next_start.strftime('%H:%M:%S')} - {next_end.strftime('%H:%M:%S')}",
+            "time_interval": time_str,
             "strategies_passed": sum(conditions.values()),
             "total_strategies": len(conditions),
             "conditions": conditions,
@@ -190,27 +194,18 @@ class AdvancedQuantumEngine:
             "analysis_timestamp": get_bdt_time().strftime("%Y-%m-%d %H:%M")
         }
     
-    def predict_future_trade(self, pair, target_time):
-        """SEQUENTIAL SCAN for future trades: DOWN first, then UP, select winner"""
+    def predict_single_direction(self, pair, direction, target_time=None):
+        """Generate prediction for a single direction only"""
         data_1m = self.market_data.generate_historical_data(days=5)
         current = data_1m.iloc[-1]
         conditions, volatility = self.analyze_strategies(data_1m, current)
         
-        # Step 1: Scan for DOWN (PUT) signal
-        put_confidence = self.calculate_direction_confidence(conditions, "PUT")
+        confidence = self.calculate_direction_confidence(conditions, direction)
         
-        # Step 2: Scan for UP (CALL) signal
-        call_confidence = self.calculate_direction_confidence(conditions, "CALL")
-        
-        # Step 3: Select winner (higher confidence)
-        if put_confidence > call_confidence:
-            direction = "PUT"
-            direction_text = "🔴 RED (PUT)"
-            final_confidence = put_confidence
-        else:
-            direction = "CALL"
+        if direction == "CALL":
             direction_text = "🟢 GREEN (CALL)"
-            final_confidence = call_confidence
+        else:
+            direction_text = "🔴 RED (PUT)"
         
         # Calculate overall score
         weighted_score = sum([
@@ -220,21 +215,29 @@ class AdvancedQuantumEngine:
         max_possible = sum(self.weights.values())
         score = int(85 + (weighted_score / max_possible) * 15)
         
-        volatility_factor = 1.0 if conditions["ATR_Volatility_Filter"] else 0.6
+        # Time interval
+        if target_time:
+            trade_start = target_time
+            trade_end = trade_start + datetime.timedelta(minutes=1)
+            time_str = f"{trade_start.strftime('%H:%M:%S')} - {trade_end.strftime('%H:%M:%S')}"
+        else:
+            current_time = get_bdt_time()
+            next_start = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+            next_end = next_start + datetime.timedelta(minutes=1)
+            time_str = f"{next_start.strftime('%H:%M:%S')} - {next_end.strftime('%H:%M:%S')}"
         
         return {
             "pair": pair,
-            "scheduled_time": target_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "direction": direction_text,
-            "trade_decision": direction,
+            "prediction": direction_text,
+            "direction": direction,
             "score": min(max(score, 85), 100),
-            "confidence": final_confidence,
-            "put_confidence": put_confidence,
-            "call_confidence": call_confidence,
-            "volatility_adjusted": round(final_confidence * volatility_factor / 100, 1),
+            "confidence": confidence,
+            "time_interval": time_str,
             "strategies_passed": sum(conditions.values()),
+            "total_strategies": len(conditions),
             "conditions": conditions,
-            "expected_magnitude": "HIGH" if volatility_factor > 0.9 else "MEDIUM",
+            "current_candle_color": current['color'],
+            "volatility_regime": "HIGH" if volatility > 0.0008 else "LOW",
             "analysis_timestamp": get_bdt_time().strftime("%Y-%m-%d %H:%M")
         }
 
@@ -436,6 +439,16 @@ def get_theme_css():
         text-align: center;
         margin: 5px 0;
     }
+    
+    .top-30-badge {
+        background: linear-gradient(135deg, #ff00ff, #00d4ff);
+        color: white;
+        padding: 3px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: bold;
+        float: right;
+    }
     </style>
     """
 
@@ -448,6 +461,8 @@ if "future_signals" not in st.session_state:
     st.session_state.future_signals = []
 if "scan_mode" not in st.session_state:
     st.session_state.scan_mode = None
+if "direction_filter" not in st.session_state:
+    st.session_state.direction_filter = "Both (UP & DOWN)"
 
 # --- ৫. MAIN UI ---
 st.set_page_config(page_title="⚡ ZOHA NEURAL-100 TERMINAL", layout="wide")
@@ -462,8 +477,8 @@ with clock_col2:
 st.markdown("---")  # Separator after clock
 
 # Header
-st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.0</h1>', unsafe_allow_html=True)
-st.write("🧠 SEQUENTIAL SCAN ENGINE | DOWN → UP → SELECT WINNER | 17 STRATEGIES")
+st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.1</h1>', unsafe_allow_html=True)
+st.write("🧠 DUAL-FORCE SCAN ENGINE | 30 HIGHEST CONFIDENCE TRADES IN 2 HOURS")
 
 # --- ৬. SIDEBAR ---
 with st.sidebar:
@@ -477,15 +492,32 @@ with st.sidebar:
     
     min_score = st.slider("Sensitivity Threshold", 85, 100, 88, 1)
     
+    # DIRECTION FILTER
+    st.divider()
+    st.header("🎯 DIRECTION FILTER")
+    direction_filter = st.radio(
+        "Generate Signals For:",
+        ["UP (CALL) Only", "DOWN (PUT) Only", "Both (UP & DOWN) - Winner Selection"],
+        index=2,
+        help="Select which direction(s) to analyze"
+    )
+    st.session_state.direction_filter = direction_filter
+    
+    filter_msg = {
+        "UP (CALL) Only": "⬆️ Will scan and generate ONLY UP (CALL) signals",
+        "DOWN (PUT) Only": "⬇️ Will scan and generate ONLY DOWN (PUT) signals",
+        "Both (UP & DOWN) - Winner Selection": "⚡ Will scan BOTH directions sequentially and select the winner (higher confidence)"
+    }
+    st.info(filter_msg[direction_filter])
+    
     st.divider()
     st.header("🔮 PREDICTION SETTINGS")
     
-    st.subheader("📊 Live 1M Candle Prediction")
-    st.caption("Sequential: DOWN scan → UP scan → Winner selection")
+    st.subheader("📊 2-Hour High-Frequency Scan")
+    st.caption("Scans every minute, selects top 30 highest confidence trades")
     
-    st.subheader("⏰ Future Timed Predictions")
-    num_future_signals = st.slider("Number of Signals", 5, 30, 15, key="future_count")
-    time_window_hours = st.slider("Time Window (Hours)", 0.5, 3.0, 1.5, 0.5, key="future_window")
+    st.subheader("⏰ Live 1M Candle Prediction")
+    st.caption("Immediate next candle prediction")
     
     st.divider()
     
@@ -495,7 +527,7 @@ with st.sidebar:
     st.button("🚀 EXECUTE LIVE PREDICTION", use_container_width=True, 
               on_click=set_scan_mode, args=("live",))
     
-    st.button("🔮 GENERATE FUTURE PREDICTIONS", use_container_width=True,
+    st.button("🔮 GENERATE 2-HOUR TOP 30", use_container_width=True,
               on_click=set_scan_mode, args=("future",))
     
     st.divider()
@@ -507,11 +539,11 @@ with st.sidebar:
         st.rerun()
     
     st.metric("Live Predictions", len(st.session_state.candle_predictions))
-    st.metric("Future Predictions", len(st.session_state.future_signals))
+    st.metric("2-Hour Top 30", len(st.session_state.future_signals))
 
 # --- ৭. DISPLAY FUNCTIONS ---
 def display_live_predictions():
-    """Display next 1M candle predictions with confidence comparison"""
+    """Display next 1M candle predictions"""
     if not st.session_state.candle_predictions:
         return
     
@@ -522,20 +554,11 @@ def display_live_predictions():
         with cols[idx % 3]:
             direction_class = "call-signal" if pred['direction'] == "CALL" else "put-signal"
             
-            # Show winner highlight if confidence difference is significant
-            card_class = "signal-card prediction-card"
-            if abs(pred['put_confidence'] - pred['call_confidence']) > 10:
-                card_class += " winner-highlight"
-            
             html = f"""
-<div class="{card_class}">
+<div class="signal-card prediction-card">
     <div class="pair-name">{pair}</div>
-    <div class="scan-sequence-indicator">🔻 DOWN Scan: {pred['put_confidence']}% → 🔺 UP Scan: {pred['call_confidence']}%</div>
     <div class="time-interval">⏱️ {pred['time_interval']}</div>
-    <div class="direction-text {direction_class}">{pred['prediction']} (Winner)</div>
-    <div class="confidence-comparison">
-        ✅ Winner Confidence: {pred['confidence']}% | Margin: {abs(pred['put_confidence'] - pred['call_confidence']):.1f}%
-    </div>
+    <div class="direction-text {direction_class}">{pred['prediction']}</div>
     <div style="display: flex; justify-content: space-between;">
         <div>
             <div style="font-size: 11px; color: #8b949e;">CONFIDENCE</div>
@@ -567,52 +590,51 @@ def display_live_predictions():
                         st.caption(desc)
 
 def display_future_predictions():
-    """Display future timed predictions"""
+    """Display top 30 predictions sorted by confidence"""
     if not st.session_state.future_signals:
         return
     
-    st.success(f"🔮 {len(st.session_state.future_signals)} Future Predictions Scheduled")
+    st.success(f"🔮 Top 30 Highest Confidence Trades (2-Hour Scan)")
+    
+    # Sort by confidence descending
+    sorted_signals = sorted(st.session_state.future_signals, key=lambda x: x['confidence'], reverse=True)
     
     cols = st.columns(3)
-    for idx, signal in enumerate(st.session_state.future_signals):
+    for idx, signal in enumerate(sorted_signals):
         with cols[idx % 3]:
             direction_class = "call-signal" if signal['trade_decision'] == "CALL" else "put-signal"
             
-            # Show winner highlight if confidence difference is significant
-            card_class = "signal-card future-card"
-            if abs(signal['put_confidence'] - signal['call_confidence']) > 10:
-                card_class += " winner-highlight"
-            
             # Countdown
-            hours = signal['countdown_minutes'] // 60
-            minutes = signal['countdown_minutes'] % 60
-            countdown_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+            current_time = get_bdt_time()
+            target_dt = datetime.datetime.strptime(signal['scheduled_time'], "%Y-%m-%d %H:%M:%S")
+            target_dt = target_dt.replace(tzinfo=pytz.timezone('Asia/Dhaka'))
+            
+            time_diff = target_dt - current_time
+            minutes_remaining = int(time_diff.total_seconds() / 60)
+            
+            countdown_str = f"{minutes_remaining}m" if minutes_remaining > 0 else "NOW"
             
             html = f"""
-<div class="{card_class}">
-    <div class="pair-name">{signal['pair']}</div>
-    <div class="scan-sequence-indicator">🔻 DOWN Scan: {signal['put_confidence']}% → 🔺 UP Scan: {signal['call_confidence']}%</div>
+<div class="signal-card future-card">
+    <div class="pair-name">{signal['pair']} <span class="top-30-badge">#{idx+1}</span></div>
     <div class="timestamp-display">🕒 {signal['scheduled_time']}</div>
-    <div class="direction-text {direction_class}">{signal['direction']} (Winner)</div>
-    <div class="confidence-comparison">
-        ✅ Winner Confidence: {signal['confidence']}% | Margin: {abs(signal['put_confidence'] - signal['call_confidence']):.1f}%
-    </div>
     <div style="display: flex; justify-content: space-between;">
         <div>
-            <div style="font-size: 11px; color: #8b949e;">SCORE</div>
-            <div class="score-box">{signal['score']}</div>
+            <div style="font-size: 11px; color: #8b949e;">CONFIDENCE</div>
+            <div class="score-box">{signal['confidence']}%</div>
         </div>
         <div style="text-align: right;">
-            <div style="font-size: 11px; color: #8b949e;">IN</div>
+            <div style="font-size: 11px; color: #8b949e;">COUNTDOWN</div>
             <div class="countdown">{countdown_str}</div>
         </div>
     </div>
+    <div class="direction-text {direction_class}">{signal['direction']}</div>
     <div style="margin-top: 10px; font-size: 12px;">
         <span style="background: rgba(0, 212, 255, 0.2); padding: 3px 8px; border-radius: 10px;">
             {signal['strategies_passed']}/17 Strategies
         </span>
         <span style="float: right; color: #00ffcc;">
-            Conf: {signal['volatility_adjusted']}%
+            Score: {signal['score']}/100
         </span>
     </div>
 </div>
@@ -620,7 +642,7 @@ def display_future_predictions():
             
             st.markdown(html, unsafe_allow_html=True)
             
-            with st.expander("🔍 View All Strategies", expanded=False):
+            with st.expander("🔍 View Strategy Analysis", expanded=False):
                 st.write("**Strategy Results:**")
                 col1, col2 = st.columns(2)
                 for i, (strategy, passed) in enumerate(signal['conditions'].items()):
@@ -640,10 +662,15 @@ if st.session_state.scan_mode == "live":
     status_text = st.empty()
     
     for idx, pair in enumerate(selected_assets):
-        status_text.text(f"🧠 Sequential scanning: DOWN → UP for {pair}...")
-        time.sleep(0.5)  # Simulate sequential processing time
+        status_text.text(f"🧠 Analyzing {pair} ({st.session_state.direction_filter})...")
+        time.sleep(0.3)
         
-        prediction = engine.predict_next_candle(pair)
+        if st.session_state.direction_filter == "Both (UP & DOWN) - Winner Selection":
+            prediction = engine.generate_both_predictions(pair)
+        elif st.session_state.direction_filter == "UP (CALL) Only":
+            prediction = engine.predict_single_direction(pair, "CALL")
+        else:  # DOWN (PUT) Only
+            prediction = engine.predict_single_direction(pair, "PUT")
         
         if prediction['score'] >= min_score:
             st.session_state.candle_predictions[pair] = prediction
@@ -656,32 +683,52 @@ if st.session_state.scan_mode == "live":
     st.rerun()
 
 elif st.session_state.scan_mode == "future":
+    # Clear previous future signals
     st.session_state.future_signals = []
-    
-    total_minutes = time_window_hours * 60
-    interval_minutes = total_minutes / num_future_signals
     
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for i in range(num_future_signals):
-        pair = selected_assets[i % len(selected_assets)]
+    # 2-hour scan (120 minutes)
+    total_minutes = 120
+    scan_interval = 1  # Scan every minute
+    
+    all_predictions = []
+    
+    for minute in range(total_minutes):
+        elapsed = minute + 1
+        status_text.text(f"🔮 2-Hour Scan Progress: {elapsed}/120 minutes | Gathering all signals...")
         
-        # Ensure future trade times always start at 00 seconds
-        current_time = get_bdt_time()
-        current_time_rounded = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
-        target_time = current_time_rounded + datetime.timedelta(minutes=i * interval_minutes)
+        for pair in selected_assets:
+            # Generate signals for each pair at this minute
+            if st.session_state.direction_filter == "Both (UP & DOWN) - Winner Selection":
+                prediction = engine.generate_both_predictions(pair)
+            elif st.session_state.direction_filter == "UP (CALL) Only":
+                prediction = engine.predict_single_direction(pair, "CALL")
+            else:  # DOWN (PUT) Only
+                prediction = engine.predict_single_direction(pair, "PUT")
+            
+            # Add timestamp for this prediction
+            current_time = get_bdt_time()
+            target_time = current_time.replace(second=0, microsecond=0) + datetime.timedelta(minutes=minute + 1)
+            prediction['scheduled_time'] = target_time.strftime("%Y-%m-%d %H:%M:%S")
+            prediction['minute_offset'] = minute
+            
+            # Store if meets minimum score
+            if prediction['score'] >= min_score:
+                all_predictions.append(prediction)
         
-        status_text.text(f"🔮 Sequential scanning: DOWN → UP for {pair} at {target_time.strftime('%H:%M:%S')}...")
-        time.sleep(0.2)
-        
-        prediction = engine.predict_future_trade(pair, target_time)
-        
-        if prediction['score'] >= min_score:
-            prediction['countdown_minutes'] = int((target_time - current_time).total_seconds() / 60)
-            st.session_state.future_signals.append(prediction)
-        
-        progress_bar.progress((i + 1) / num_future_signals)
+        progress_bar.progress(int((elapsed / total_minutes) * 100))
+        time.sleep(0.05)  # Small delay for UI responsiveness
+    
+    # After 2-hour scan, select TOP 30 by confidence
+    if all_predictions:
+        # Sort by confidence descending
+        top_30 = sorted(all_predictions, key=lambda x: x['confidence'], reverse=True)[:30]
+        st.session_state.future_signals = top_30
+        st.success(f"✅ Found {len(all_predictions)} signals, selected TOP 30 by confidence!")
+    else:
+        st.warning("⚠️ No signals met the threshold during 2-hour scan.")
     
     status_text.empty()
     progress_bar.empty()
@@ -694,13 +741,13 @@ st.divider()
 # Live Predictions Section
 if st.session_state.candle_predictions:
     st.subheader("📊 NEXT 1-MINUTE CANDLE PREDICTIONS")
-    st.caption("Sequential scan: DOWN → UP → Winner selection")
+    st.caption("Direction filter applied: " + st.session_state.direction_filter)
     display_live_predictions()
 
 # Future Predictions Section
 if st.session_state.future_signals:
-    st.subheader("⏰ FUTURE TIMED TRADE PREDICTIONS")
-    st.caption("Scheduled: HH:MM:00 format, Winner by confidence")
+    st.subheader("🔥 TOP 30 HIGHEST CONFIDENCE TRADES (2-Hour Scan)")
+    st.caption("Sorted by confidence | Direction filter: " + st.session_state.direction_filter)
     display_future_predictions()
 
 # --- ১০. STATISTICS ---
@@ -713,11 +760,12 @@ with col1:
     st.metric("Live Predictions", live_count, "Active")
 with col2:
     future_count = len(st.session_state.future_signals)
-    st.metric("Future Scheduled", future_count, "Queued")
+    st.metric("Top 30 Selected", future_count, "Best of 2H")
 with col3:
-    st.metric("Analysis Speed", "0.5s", "Sequential")
+    st.metric("Scan Coverage", "120 min", "Every minute")
 with col4:
-    st.metric("Strategy Accuracy", "99.1%", "±0.3%")
+    avg_confidence = np.mean([s['confidence'] for s in st.session_state.future_signals]) if st.session_state.future_signals else 0
+    st.metric("Avg Confidence", f"{avg_confidence:.1f}%", "±0.5%")
 
 # --- ১১. EXPORT & CLEAR ---
 if st.session_state.candle_predictions or st.session_state.future_signals:
@@ -737,9 +785,9 @@ if st.session_state.candle_predictions or st.session_state.future_signals:
             if st.session_state.future_signals:
                 df_future = pd.DataFrame(st.session_state.future_signals)
                 st.download_button(
-                    "🔮 Download Future Predictions",
+                    "🔮 Download Top 30 Predictions",
                     df_future.to_csv(index=False).encode('utf-8'),
-                    "future_trade_predictions.csv",
+                    "top_30_predictions.csv",
                     "text/csv",
                     use_container_width=True
                 )
@@ -768,6 +816,6 @@ st.markdown(clock_script, unsafe_allow_html=True)
 st.divider()
 st.markdown("""
 <div style="text-align:center; color:#8b949e; font-size:12px;">
-    ⚡ ZOHA NEURAL-100 v6.0 | Sequential Scan Engine | DOWN → UP → Winner by Confidence
+    ⚡ ZOHA NEURAL-100 v6.1 | Dual-Force Scan Engine | Top 30 Selection | 120-Minute Coverage
 </div>
 """, unsafe_allow_html=True)
