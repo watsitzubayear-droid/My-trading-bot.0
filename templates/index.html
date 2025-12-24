@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoha Future Signals</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 3D Logo Container -->
+        <div id="logo-container"></div>
+        
+        <h1 class="neon-text">Zoha Future Signals</h1>
+        <p class="subtitle neon-blue">AI-Powered 1-Minute Candle Predictions</p>
+        
+        <!-- Server Time -->
+        <div class="time-display">
+            <span class="neon-green">Server Time (BDT):</span>
+            <span id="server-time" class="neon-yellow">Loading...</span>
+        </div>
+        
+        <!-- Controls -->
+        <div class="controls">
+            <select id="market-type" class="neon-select">
+                <option value="real">Real Market</option>
+                <option value="otc">OTC Market</option>
+            </select>
+            
+            <select id="pair" class="neon-select">
+                <option value="EUR/USD">EUR/USD</option>
+                <option value="GBP/USD">GBP/USD</option>
+                <option value="USD/JPY">USD/JPY</option>
+                <option value="BDT/USD">BDT/USD</option>
+                <option value="XAU/USD">XAU/USD</option>
+            </select>
+            
+            <input type="number" id="num-signals" class="neon-input" value="100" min="10" max="500">
+            
+            <button id="generate-btn" class="neon-button">Generate 100 Signals</button>
+            <button id="download-btn" class="neon-button purple">Download CSV</button>
+        </div>
+        
+        <!-- Status -->
+        <div id="status" class="status"></div>
+        
+        <!-- Signals Table -->
+        <div class="table-container">
+            <table id="signals-table">
+                <thead>
+                    <tr>
+                        <th>Pair</th>
+                        <th>Signal Time (BDT)</th>
+                        <th>Direction</th>
+                        <th>Confidence</th>
+                        <th>Signal Text</th>
+                    </tr>
+                </thead>
+                <tbody id="signals-tbody">
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Loading Overlay -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p class="neon-blue">Generating Signals...</p>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/logo.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
