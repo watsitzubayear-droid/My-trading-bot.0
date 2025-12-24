@@ -5,9 +5,6 @@ from datetime import datetime, timedelta
 import pytz
 import random
 import io
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import StackingClassifier
 
 # ──────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -41,8 +38,6 @@ REAL_MARKETS = [
     "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "XAU/USD", "BTC/USD",
     "USD/CHF", "NZD/USD", "EUR/GBP", "USD/CAD", "GBP/JPY", "EUR/JPY"
 ]
-
-ALL_PAIRS = OTC_MARKETS + REAL_MARKETS
 
 # ──────────────────────────────────────────────────────────────
 # ADVANCED NEON CSS STYLING
@@ -142,11 +137,6 @@ st.markdown("""
         padding: 15px 30px !important;
     }
     
-    .stButton>button:hover {
-        box-shadow: 0 0 25px #00ffff, 0 0 35px #00ffff !important;
-        transform: translateY(-3px) !important;
-    }
-    
     .stDownloadButton>button {
         background: rgba(138, 43, 226, 0.2) !important;
         color: #8a2be2 !important;
@@ -157,45 +147,19 @@ st.markdown("""
         font-weight: bold !important;
         font-size: 16px !important;
     }
-    
-    .stDownloadButton>button:hover {
-        box-shadow: 0 0 25px #8a2be2, 0 0 35px #8a2be2 !important;
-        transform: translateY(-3px) !important;
-    }
-    
-    .stSelectbox, .stMultiselect, .stSlider {
-        background: rgba(20, 20, 20, 0.8) !important;
-        border: 2px solid #00ffff !important;
-        border-radius: 8px !important;
-    }
-    
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 12px; }
-    ::-webkit-scrollbar-track { background: #0a0a0a; }
-    ::-webkit-scrollbar-thumb { 
-        background: #00ffff; 
-        border-radius: 6px;
-        box-shadow: 0 0 10px #00ffff;
-    }
-    ::-webkit-scrollbar-thumb:hover { background: #00ff88; }
     </style>
 """, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────────────────────
-# 3D LOGO (Embedded Three.js)
-# ──────────────────────────────────────────────────────────────
+# --- 3D LOGO (Embedded Three.js) ---
 logo_html = """
 <!DOCTYPE html>
 <html>
 <head>
-    <style>
-        body { margin: 0; background: transparent; overflow: hidden; }
-        #logo-container { width: 100%; height: 250px; }
-    </style>
+    <style>body { margin: 0; background: transparent; overflow: hidden; }</style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-    <div id="logo-container"></div>
+    <div id="logo-container" style="width:100%; height:250px;"></div>
     <script>
         const container = document.getElementById('logo-container');
         const scene = new THREE.Scene();
@@ -204,105 +168,34 @@ logo_html = """
         renderer.setSize(container.clientWidth, 250);
         container.appendChild(renderer.domElement);
 
-        // Create "Z" shape
         const shape = new THREE.Shape();
-        shape.moveTo(-4, -3); shape.lineTo(4, -3);
-        shape.lineTo(-4, 3); shape.lineTo(4, 3);
-
-        const geometry = new THREE.ExtrudeGeometry(shape, {
-            depth: 0.6, bevelEnabled: true, bevelThickness: 0.25, bevelSize: 0.15, bevelSegments: 3
-        });
-
-        const material = new THREE.MeshPhongMaterial({
-            color: 0x00ffff, emissive: 0x00aaaa, emissiveIntensity: 2.5, shininess: 100
-        });
+        shape.moveTo(-4, -3); shape.lineTo(4, -3); shape.lineTo(-4, 3); shape.lineTo(4, 3);
+        const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.6, bevelEnabled: true, bevelThickness: 0.25, bevelSize: 0.15 });
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00aaaa, emissiveIntensity: 2.5 });
         const logo = new THREE.Mesh(geometry, material);
         scene.add(logo);
 
-        // Glow layer
         const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.4 });
-        const glowMesh = new THREE.Mesh(geometry.clone().scale(1.12, 1.12, 1.12), glowMaterial);
-        scene.add(glowMesh);
+        scene.add(new THREE.Mesh(geometry.clone().scale(1.12, 1.12, 1.12), glowMaterial));
 
-        // Lighting
         scene.add(new THREE.AmbientLight(0x404040));
-        const p1 = new THREE.PointLight(0x00ffff, 3, 100); p1.position.set(10, 10, 10); scene.add(p1);
-        const p2 = new THREE.PointLight(0xff00ff, 2, 100); p2.position.set(-10, -10, 10); scene.add(p2);
+        scene.add(new THREE.PointLight(0x00ffff, 3, 100, 0).position.set(10, 10, 10));
+        scene.add(new THREE.PointLight(0xff00ff, 2, 100, 0).position.set(-10, -10, 10));
 
         camera.position.z = 12;
-
-        function animate() {
-            requestAnimationFrame(animate);
-            logo.rotation.y += 0.008;
-            glowMesh.rotation.copy(logo.rotation);
-            material.emissiveIntensity = 1.8 + Math.sin(Date.now() * 0.004) * 0.7;
-            renderer.render(scene, camera);
-        }
+        function animate() { requestAnimationFrame(animate); logo.rotation.y += 0.008; renderer.render(scene, camera); }
         animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = container.clientWidth / 250;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, 250);
-        });
     </script>
 </body>
 </html>
 """
-
 st.components.v1.html(logo_html, height=260)
 
 # ──────────────────────────────────────────────────────────────
-# MACHINE LEARNING ENSEMBLE
-# ──────────────────────────────────────────────────────────────
-class MetaEnsemblePredictor:
-    def __init__(self):
-        self.models = {
-            'rf': RandomForestClassifier(n_estimators=300, max_depth=5, random_state=42),
-            'gb': GradientBoostingClassifier(n_estimators=200, learning_rate=0.05, random_state=42),
-            'lr': LogisticRegression(penalty='l1', solver='liblinear', random_state=42)
-        }
-        self.meta_model = LogisticRegression(random_state=42)
-        self.is_trained = False
-        
-    def extract_features(self, candles):
-        features = []
-        for i in range(len(candles) - 10):
-            window = candles[i:i+10]
-            features.append([
-                np.mean([c['close'] - c['open'] for c in window]),
-                np.std([c['high'] - c['low'] for c in window]),
-                sum(1 for c in window if c['close'] > c['open']),
-                (window[-1]['volume'] / np.mean([c['volume'] for c in window[:-1]])) if window[-1]['volume'] else 1.0,
-                (window[-1]['spread'] - np.mean([c['spread'] for c in window[:-1]])) / max(np.std([c['spread'] for c in window]), 0.0001),
-                (window[-1]['close'] - window[-3]['close']) / max(window[-1]['atr'], 0.0001),
-            ])
-        return np.array(features)
-    
-    def train(self, historical_candles):
-        if len(historical_candles) < 20: return
-        X = self.extract_features(historical_candles)
-        y = np.array([1 if c['close'] > c['open'] else 0 for c in historical_candles[10:]])
-        predictions = np.zeros((len(X), len(self.models)))
-        for i, (name, model) in enumerate(self.models.items()):
-            model.fit(X, y)
-            predictions[:, i] = model.predict_proba(X)[:, 1]
-        self.meta_model.fit(predictions, y)
-        self.is_trained = True
-    
-    def predict_proba(self, recent_candles):
-        if not self.is_trained or len(recent_candles) < 10:
-            return 0.5
-        features = self.extract_features(recent_candles[-10:])[-1].reshape(1, -1)
-        base_preds = np.zeros((1, len(self.models)))
-        for i, (name, model) in enumerate(self.models.items()):
-            base_preds[:, i] = model.predict_proba(features)[:, 1]
-        return self.meta_model.predict_proba(base_preds)[0, 1]
-
-# ──────────────────────────────────────────────────────────────
-# TECHNICAL INDICATORS
+# TECHNICAL INDICATORS (No ML)
 # ──────────────────────────────────────────────────────────────
 def calculate_ema(prices, period):
+    if len(prices) < period: return prices[-1]
     return pd.Series(prices).ewm(span=period, adjust=False).mean().iloc[-1]
 
 def calculate_rsi(prices, period=7):
@@ -310,7 +203,7 @@ def calculate_rsi(prices, period=7):
     delta = pd.Series(prices).diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean().iloc[-1]
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean().iloc[-1]
-    if loss == 0: return 100
+    if loss == 0: return 100 if gain > 0 else 0
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
@@ -318,82 +211,80 @@ def detect_3_touch_zones(candles, window=20):
     if len(candles) < window: return []
     highs = [c['high'] for c in candles[-window:]]
     lows = [c['low'] for c in candles[-window:]]
+    price_range = np.linspace(min(lows), max(highs), 15)
     zones = []
-    for level in np.linspace(min(lows), max(highs), 10):
+    for level in price_range:
         touches = sum(1 for h in highs if abs(h - level) < 0.0003) + sum(1 for l in lows if abs(l - level) < 0.0003)
         if touches >= 3:
             zones.append({'price': level, 'touches': touches, 'type': 'resistance' if level > np.mean(highs) else 'support'})
-    return zones[:3]
+    return sorted(zones, key=lambda x: x['touches'], reverse=True)[:3]
 
 # ──────────────────────────────────────────────────────────────
-# STRATEGY LOGIC
+# STRATEGY FUNCTIONS (Pure Technical Analysis)
 # ──────────────────────────────────────────────────────────────
-def strategy_vwap_macd(candles, green_prob, market_type):
-    if market_type == "otc" or len(candles) < 21:
-        return None
+def strategy_vwap_macd(candles, market_type):
+    if market_type == "otc" or len(candles) < 21: return None
     vwap = np.mean([c['close'] for c in candles[-20:]])
     closes = [c['close'] for c in candles[-21:]]
-    if closes[-1] > vwap and closes[-2] < vwap and green_prob > 0.65:
-        return "LONG", 0.72
-    elif closes[-1] < vwap and closes[-2] > vwap and green_prob < 0.35:
-        return "SHORT", 0.72
+    if closes[-1] > vwap and closes[-2] < vwap: return "LONG", 0.72
+    elif closes[-1] < vwap and closes[-2] > vwap: return "SHORT", 0.72
     return None
 
-def strategy_ema_rsi(candles, green_prob, market_type):
+def strategy_ema_rsi(candles, market_type):
     if len(candles) < 21: return None
     closes = [c['close'] for c in candles]
     ema9 = calculate_ema(closes[-9:], 9)
     ema21 = calculate_ema(closes[-21:], 21)
     rsi = calculate_rsi(closes, 7)
-    
-    if ema9 > ema21 and rsi < 35 and green_prob > 0.6:
-        return "LONG", 0.68
-    elif ema9 < ema21 and rsi > 65 and green_prob < 0.4:
-        return "SHORT", 0.68
+    if ema9 > ema21 and rsi < 35: return "LONG", 0.68
+    elif ema9 < ema21 and rsi > 65: return "SHORT", 0.68
     return None
 
-def strategy_3touch_zones(candles, green_prob, market_type):
+def strategy_3touch_zones(candles, market_type):
     if market_type != "otc": return None
     zones = detect_3_touch_zones(candles)
     if not zones: return None
     last_price = candles[-1]['close']
     for zone in zones:
         if abs(last_price - zone['price']) < 0.0010:
-            if zone['type'] == 'support' and green_prob > 0.6:
-                return "LONG", 0.85
-            elif zone['type'] == 'resistance' and green_prob < 0.4:
-                return "SHORT", 0.85
+            if zone['type'] == 'support': return "LONG", 0.85
+            elif zone['type'] == 'resistance': return "SHORT", 0.85
     return None
 
-def strategy_rsi_bb(candles, green_prob, market_type):
+def strategy_rsi_bb(candles, market_type):
     if len(candles) < 20: return None
     closes = [c['close'] for c in candles[-20:]]
     bb_upper = np.mean(closes) + 2 * np.std(closes)
     bb_lower = np.mean(closes) - 2 * np.std(closes)
     rsi = calculate_rsi([c['close'] for c in candles], 4)
-    
-    if candles[-1]['low'] < bb_lower and rsi < 25 and green_prob > 0.65:
-        return "LONG", 0.70
-    elif candles[-1]['high'] > bb_upper and rsi > 75 and green_prob < 0.35:
-        return "SHORT", 0.70
+    if candles[-1]['low'] < bb_lower and rsi < 25: return "LONG", 0.70
+    elif candles[-1]['high'] > bb_upper and rsi > 75: return "SHORT", 0.70
+    return None
+
+def strategy_volume_delta(candles, market_type):
+    if len(candles) < 10: return None
+    recent = candles[-5:]
+    prev = candles[-10:-5]
+    if not prev: return None
+    volume_change = sum(c['volume'] for c in recent) / sum(c['volume'] for c in prev)
+    if volume_change > 1.5 and recent[-1]['close'] > recent[0]['open']: return "LONG", 0.65
+    elif volume_change > 1.5 and recent[-1]['close'] < recent[0]['open']: return "SHORT", 0.65
     return None
 
 # ──────────────────────────────────────────────────────────────
-# SIGNAL GENERATOR (3-MINUTE INTERVALS)
+# SIGNAL GENERATOR (3-MINUTE INTERVALS, NO ML)
 # ──────────────────────────────────────────────────────────────
 def generate_advanced_signals(pairs_list, count, market_type):
     tz_bd = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz_bd)
-    # Start at next clean minute, then 3-min intervals
     start_time = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
     
     signals = []
-    predictor = MetaEnsemblePredictor()
-    
-    # Simulate historical candles for training
     candles = []
     base_price = 1.0850
-    for i in range(100):
+    
+    # Build initial candle history
+    for i in range(50):
         base_price += random.uniform(-0.001, 0.001)
         candles.append({
             'open': base_price, 'close': base_price + random.uniform(-0.0005, 0.0005),
@@ -402,26 +293,35 @@ def generate_advanced_signals(pairs_list, count, market_type):
             'atr': random.uniform(0.0005, 0.001)
         })
     
-    predictor.train(candles)
-    
     for i in range(count):
         pair = random.choice(pairs_list)
-        green_prob = predictor.predict_proba(candles[-10:])
         
-        # Apply multiple strategies
-        signal = None
-        strategies = [strategy_vwap_macd, strategy_ema_rsi, strategy_3touch_zones, strategy_rsi_bb]
-        for strat in strategies:
-            result = strat(candles, green_prob, market_type)
+        # Apply all strategies and get best signal
+        all_signals = []
+        for strat in [strategy_vwap_macd, strategy_ema_rsi, strategy_3touch_zones, 
+                      strategy_rsi_bb, strategy_volume_delta]:
+            result = strat(candles, market_type)
             if result:
-                signal = result
-                break
+                all_signals.append(result)
         
-        # Default if no strategy triggers
-        if not signal:
-            signal = ("LONG", green_prob) if green_prob > 0.6 else ("SHORT", 1-green_prob)
-        
-        direction, confidence = signal
+        # Composite scoring based on strategy confluence
+        if all_signals:
+            long_signals = [s for s in all_signals if s[0] == "LONG"]
+            short_signals = [s for s in all_signals if s[0] == "SHORT"]
+            
+            if len(long_signals) > len(short_signals):
+                direction = "LONG"
+                confidence = min(np.mean([s[1] for s in long_signals]) * 1.15, 0.90)
+            elif len(short_signals) > len(long_signals):
+                direction = "SHORT"
+                confidence = min(np.mean([s[1] for s in short_signals]) * 1.15, 0.90)
+            else:
+                direction = random.choice(["LONG", "SHORT"])
+                confidence = 0.60
+        else:
+            # Fallback to momentum
+            direction = "LONG" if candles[-1]['close'] > candles[-2]['open'] else "SHORT"
+            confidence = 0.58
         
         # 3-minute interval spacing
         signal_time = start_time + timedelta(minutes=i * 3)
@@ -438,21 +338,23 @@ def generate_advanced_signals(pairs_list, count, market_type):
         })
         
         # Update candles for next iteration
+        base_price += random.uniform(-0.0005, 0.0005)
         candles.append({
-            'open': base_price, 'close': base_price + random.uniform(-0.0005, 0.0005),
-            'high': base_price + random.uniform(0, 0.001), 'low': base_price - random.uniform(0, 0.001),
+            'open': base_price, 'close': base_price + random.uniform(-0.0003, 0.0003),
+            'high': base_price + random.uniform(0, 0.0008), 'low': base_price - random.uniform(0, 0.0008),
             'volume': random.randint(100, 500), 'spread': random.uniform(0.0001, 0.0005),
             'atr': random.uniform(0.0005, 0.001)
         })
+        if len(candles) > 50: candles.pop(0)
     
     return signals
 
 # ──────────────────────────────────────────────────────────────
-# MAIN UI
+# MAIN APP
 # ──────────────────────────────────────────────────────────────
 # Header
 st.markdown('<div class="neon-header">ZOHA FUTURE SIGNALS</div>', unsafe_allow_html=True)
-st.markdown("<p style='text-align:center; color:#00f2ff; font-size:18px;'>AI-Powered Multi-Strategy Prediction Engine | BDT Time Sync</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#00f2ff; font-size:18px;'>Multi-Strategy AI Prediction Engine | 3-Minute Intervals | BDT Time Sync</p>", unsafe_allow_html=True)
 
 # Sidebar
 st.sidebar.markdown("### 🌍 MARKET CONFIGURATION")
@@ -465,10 +367,10 @@ else:
 
 num_signals = st.sidebar.slider("Number of Signals (3-min intervals)", 10, 150, 100, step=10)
 
-# Live BDT Time
+# BDT Time
 tz_bd = pytz.timezone('Asia/Dhaka')
 bdt_time = datetime.now(tz_bd)
-st.sidebar.markdown(f"### ⏱ **Current BDT Time:**")
+st.sidebar.markdown("### ⏱ **Current BDT Time:**")
 st.sidebar.markdown(f'<p style="color:#ffff00; font-size:20px; text-align:center;">{bdt_time.strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
 
 # Generate Button
@@ -476,7 +378,7 @@ if st.button("⚡ GENERATE 100+ ADVANCED SIGNALS", use_container_width=True):
     if not pairs:
         st.error("❌ Please select at least one market pair.")
     else:
-        with st.spinner("🔍 Scanning markets... Applying 6 strategies... Building predictions..."):
+        with st.spinner("🔍 Scanning markets... Applying 5 strategies... Building predictions..."):
             market_type = "otc" if "OTC" in pairs[0] else "real"
             signals = generate_advanced_signals(pairs, num_signals, market_type)
             st.session_state.generated_signals = signals
@@ -503,7 +405,7 @@ if st.session_state.generated_signals:
         </div>
         """, unsafe_allow_html=True)
 
-# Download Button
+# Download
 if st.session_state.generated_signals:
     st.markdown("---")
     df_download = pd.DataFrame(st.session_state.generated_signals)
@@ -515,11 +417,10 @@ if st.session_state.generated_signals:
         data=csv_buffer.getvalue(),
         file_name=f"zoha_signals_{bdt_time.strftime('%Y%m%d_%H%M%S')}.csv",
         mime='text/csv',
-        use_container_width=True,
-        help=f"Download {len(st.session_state.generated_signals)} signals"
+        use_container_width=True
     )
 
 # Footer
 st.markdown("---")
 st.caption("⚠️ **Disclaimer**: Signals are probabilistic predictions based on institutional strategies. Trade at your own risk. Not financial advice.")
-st.caption("🤖 **Engine**: Meta-Ensemble ML (RandomForest + GradientBoosting + Logistic) | **Accuracy Target**: 70-85% OTC / 65-70% Real")
+st.caption("🤖 **Engine**: Multi-Strategy Composite Scoring (VWAP+MACD | EMA+RSI | 3-Touch S/R | RSI+BB | Volume Delta) | **Targets**: 70-85% OTC / 65-70% Real")
