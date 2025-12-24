@@ -84,6 +84,8 @@ class UltraStrategyEngine:
     def __init__(self):
         self.zones = {}
         self.session_cache = {}
+        # Initialize validator for statistical methods
+        self.validator = StatisticalValidator()
     
     # STRATEGIES 1-20 (All using calculate_ema safely now)
     def vwap_macd(self, candles):  # ... implementation ...
@@ -194,11 +196,7 @@ class UltraStrategyEngine:
         return None
     
     def psychology_overlay(self, candles):
-        fear, greed = self.psychology.calculate_fear_greed(candles)
-        herd_active, herd_ratio = self.psychology.detect_herd_behavior([c['volume'] for c in candles[-10:]])
-        inst_score, wick_ratio = self.psychology.institutional_vs_retail(candles[-10:])
-        if fear > 0.7 and herd_active and herd_ratio > 2.0: return 0.73, f"Fear+herd selling (fear:{fear:.1%}, herd:{herd_ratio:.1f}x)"
-        elif greed > 0.7 and wick_ratio > 0.6: return 0.73, f"Greed+retail FOMO (greed:{greed:.1%}, wicks:{wick_ratio:.1f})"
+        """REMOVED: Psychology dependency eliminated"""
         return None
     
     def marubozu(self, candles):
@@ -270,7 +268,7 @@ class UltraStrategyEngine:
             self.time_of_day(candles),
             self.volatility_regime(candles),
             self.spread_filter(candles),
-            self.psychology_overlay(candles),
+            # REMOVED: self.psychology_overlay(candles),
             self.marubozu(candles),
             self.inside_bar(candles),
             self.gap_reversal(candles),
@@ -302,26 +300,8 @@ class UltraStrategyEngine:
 # PSYCHOLOGY & STATISTICS (Pure NumPy)
 # ──────────────────────────────────────────────────────────────
 class MarketPsychology:
-    def calculate_fear_greed(self, candles):
-        returns = np.diff([c['close'] for c in candles])
-        volatility = np.std(returns) * np.sqrt(252)
-        momentum = (candles[-1]['close'] - candles[-5]['close']) / candles[-5]['close']
-        fear = min(volatility * 10, 1.0) * (1 if momentum < 0 else 0.5)
-        greed = max(1 - volatility * 5, 0) * (1 if momentum > 0 else 0.5)
-        return fear, greed
-    
-    def detect_herd_behavior(self, volumes):
-        baseline = np.mean(volumes[:-5])
-        recent = np.mean(volumes[-3:])
-        spike_ratio = recent / baseline if baseline > 0 else 1
-        return spike_ratio > 1.8, spike_ratio
-    
-    def institutional_vs_retail(self, candles):
-        wick_sizes = [(c['high'] - max(c['open'], c['close'])) / (c['high'] - c['low']) for c in candles[-10:]]
-        volume_trend = np.mean([c['volume'] for c in candles[-5:]]) / np.mean([c['volume'] for c in candles[-10:-5]])
-        wick_ratio = np.mean(wick_sizes)
-        institutional_score = (1 - wick_ratio) * volume_trend
-        return institutional_score, wick_ratio
+    """REMOVED: No longer used by main engine"""
+    pass
 
 class StatisticalValidator:
     def __init__(self):
@@ -394,7 +374,7 @@ def generate_advanced_signals(pairs_list, count, market_type):
         
         if master_signal:
             probability, reason = master_signal
-            direction = "LONG" if any(x in reason for x in ['bullish', 'LONG', 'up', 'support', 'golden']) else "SHORT"
+            direction = "LONG" if any(x in reason for x in ['bullish', 'LONG', 'up', 'support', 'golden', 'buy']) else "SHORT"
         else:
             # Fallback: Top 3 individual strategies
             fallback_signals = []
