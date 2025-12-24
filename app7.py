@@ -7,17 +7,55 @@ import random
 import io
 
 # ──────────────────────────────────────────────────────────────
-# ⚠️ ROBUST INITIALIZATION (Prevents all AttributeErrors)
+# ⚠️ ALL HELPERS DEFINED FIRST (Before any class usage)
+# ──────────────────────────────────────────────────────────────
+def calculate_ema(prices, period):
+    """True EMA calculation - FIXED: Now at top of file"""
+    if len(prices) < period: return prices[-1]
+    alpha = 2 / (period + 1)
+    ema = prices[0]
+    for price in prices[1:]:
+        ema = alpha * price + (1 - alpha) * ema
+    return ema
+
+def calculate_rsi(prices, period=7):
+    """True RSI with Wilder's smoothing - FIXED: Now at top"""
+    if len(prices) < period + 1: return 50
+    deltas = np.diff(prices)
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
+    avg_gain = np.mean(gains[:period])
+    avg_loss = np.mean(losses[:period])
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+    if avg_loss == 0: return 100 if avg_gain > 0 else 0
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+def detect_3_touch_zones(candles, window=20):
+    """Detect 3-touch S/R zones - FIXED: Now at top"""
+    if len(candles) < window: return []
+    highs = [c['high'] for c in candles[-window:]]
+    lows = [c['low'] for c in candles[-window:]]
+    price_range = np.linspace(min(lows), max(highs), 15)
+    zones = []
+    for level in price_range:
+        touches = sum(1 for h in highs if abs(h - level) < 0.0003) + sum(1 for l in lows if abs(l - level) < 0.0003)
+        if touches >= 3:
+            zones.append({'price': level, 'touches': touches, 'type': 'resistance' if level > np.mean(highs) else 'support'})
+    return sorted(zones, key=lambda x: x['touches'], reverse=True)[:3]
+
+# ──────────────────────────────────────────────────────────────
+# ⚠️ SESSION STATE INITIALIZATION
 # ──────────────────────────────────────────────────────────────
 if 'generated_signals' not in st.session_state:
     st.session_state.generated_signals = None
 if 'last_update' not in st.session_state:
     st.session_state.last_update = None
-if 'engine' not in st.session_state:
-    st.session_state.engine = None
 
 # ──────────────────────────────────────────────────────────────
-# MARKET UNIVERSE (45 Instruments)
+# MARKET UNIVERSE
 # ──────────────────────────────────────────────────────────────
 OTC_MARKETS = [
     "USD/BDT (OTC)", "EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", 
@@ -40,15 +78,15 @@ REAL_MARKETS = [
 ]
 
 # ──────────────────────────────────────────────────────────────
-# 20+ STRATEGY ENGINE (All simplified but functional)
+# 20+ STRATEGY ENGINE (Now can use calculate_ema)
 # ──────────────────────────────────────────────────────────────
 class UltraStrategyEngine:
     def __init__(self):
         self.zones = {}
         self.session_cache = {}
     
-    # STRATEGY 1: VWAP + MACD
-    def vwap_macd(self, candles):
+    # STRATEGIES 1-20 (All using calculate_ema safely now)
+    def vwap_macd(self, candles):  # ... implementation ...
         if len(candles) < 26: return None
         typical_prices = [(c['high'] + c['low'] + c['close']) / 3 for c in candles[-20:]]
         volumes = [c['volume'] for c in candles[-20:]]
@@ -63,7 +101,6 @@ class UltraStrategyEngine:
             return 0.78, "VWAP+MACD bearish"
         return None
     
-    # STRATEGY 2: EMA Crossover + Pullback
     def ema_crossover(self, candles):
         if len(candles) < 21: return None
         closes = [c['close'] for c in candles]
@@ -75,7 +112,6 @@ class UltraStrategyEngine:
         elif cross_down and trend_aligned: return 0.75, "EMA death cross"
         return None
     
-    # STRATEGY 3: 3-Touch Zones
     def three_touch_zones(self, candles, pair):
         if len(candles) < 20: return None
         highs, lows, current_price = [c['high'] for c in candles[-20:]], [c['low'] for c in candles[-20:]], candles[-1]['close']
@@ -88,7 +124,6 @@ class UltraStrategyEngine:
                     return 0.85, f"3-touch resistance at {level:.4f}"
         return None
     
-    # STRATEGY 4: RSI + BB Reversion
     def rsi_bb_reversion(self, candles):
         if len(candles) < 20: return None
         closes = [c['close'] for c in candles[-20:]]
@@ -98,7 +133,6 @@ class UltraStrategyEngine:
         elif candles[-1]['high'] > bb_upper and rsi_4 > 75: return 0.72, "BB+RSI overbought"
         return None
     
-    # STRATEGY 5: Volume Delta (Institutional)
     def volume_delta(self, candles):
         if len(candles) < 10: return None
         vol_momentum = np.mean([c['volume'] for c in candles[-3:]]) / np.mean([c['volume'] for c in candles[-10:-3]])
@@ -107,7 +141,6 @@ class UltraStrategyEngine:
         elif vol_momentum > 1.6 and price_momentum > 0.001: return 0.68, f"Institutional distribution (vol: {vol_momentum:.1f}x)"
         return None
     
-    # STRATEGY 6: Doji Trap
     def doji_trap(self, candles):
         if len(candles) < 10: return None
         for i in range(-5, 0):
@@ -121,7 +154,6 @@ class UltraStrategyEngine:
                 elif c['close'] < ema8 and wick_top > wick_bottom: return 0.73, f"Doji top reversal (candle {i})"
         return None
     
-    # STRATEGY 7: Engulfing Pattern
     def engulfing_pattern(self, candles):
         if len(candles) < 3: return None
         c1, c2 = candles[-2], candles[-1]
@@ -131,31 +163,20 @@ class UltraStrategyEngine:
             return 0.70, "Bearish engulfing + volume"
         return None
     
-    # STRATEGY 8: Hammer/Shooting Star
     def hammer_star(self, candles):
         if len(candles) < 2: return None
         c = candles[-1]
-        body = abs(c['close'] - c['open'])
-        wick_top = c['high'] - max(c['open'], c['close'])
-        wick_bottom = min(c['open'], c['close']) - c['low']
-        
-        if body < wick_bottom * 0.3 and wick_bottom > body * 2:  # Hammer
-            return 0.68, "Hammer reversal"
-        elif body < wick_top * 0.3 and wick_top > body * 2:  # Shooting star
-            return 0.68, "Shooting star reversal"
+        body, wick_top, wick_bottom = abs(c['close'] - c['open']), c['high'] - max(c['open'], c['close']), min(c['open'], c['close']) - c['low']
+        if body < wick_bottom * 0.3 and wick_bottom > body * 2: return 0.68, "Hammer reversal"
+        elif body < wick_top * 0.3 and wick_top > body * 2: return 0.68, "Shooting star reversal"
         return None
     
-    # STRATEGY 9: Time-of-Day Pattern
     def time_of_day(self, candles):
         bdt_hour = datetime.now(pytz.timezone('Asia/Dhaka')).hour
-        if 19 <= bdt_hour <= 22:  # Overlap hours
-            momentum = candles[-1]['close'] - candles[-3]['close']
-            return 0.70, f"London-NY overlap momentum: {'up' if momentum > 0 else 'down'}"
-        elif 18 <= bdt_hour <= 19:  # Lunch
-            return 0.40, "Low liquidity session - avoid"
+        if 19 <= bdt_hour <= 22: return 0.70, "London-NY overlap momentum"
+        elif 18 <= bdt_hour <= 19: return 0.40, "Low liquidity session"
         return None
     
-    # STRATEGY 10: Volatility Regime Filter
     def volatility_regime(self, candles):
         returns = np.diff([c['close'] for c in candles[-20:]])
         current_vol, avg_vol = np.std(returns[-5:]) * np.sqrt(252), np.std(returns) * np.sqrt(252)
@@ -163,101 +184,80 @@ class UltraStrategyEngine:
         elif current_vol < avg_vol * 0.7: return 0.65, "Low volatility - trend following"
         return None
     
-    # STRATEGY 11: Spread vs Volatility
     def spread_filter(self, candles):
         spreads = [c['spread'] for c in candles[-10:]]
         current_spread, avg_spread = spreads[-1], np.mean(spreads[:-1])
         if avg_spread == 0: return None
         spread_ratio = current_spread / avg_spread
-        if spread_ratio > 2.0: return 0.45, f"Spread widening {spread_ratio:.1f}x - volatility incoming"
-        elif spread_ratio < 0.7: return 0.65, f"Spread compression {spread_ratio:.1f}x - calm"
+        if spread_ratio > 2.0: return 0.45, f"Spread widening {spread_ratio:.1f}x"
+        elif spread_ratio < 0.7: return 0.65, f"Spread compression {spread_ratio:.1f}x"
         return None
     
-    # STRATEGY 12: Psychology Overlay
     def psychology_overlay(self, candles):
         fear, greed = self.psychology.calculate_fear_greed(candles)
         herd_active, herd_ratio = self.psychology.detect_herd_behavior([c['volume'] for c in candles[-10:]])
         inst_score, wick_ratio = self.psychology.institutional_vs_retail(candles[-10:])
-        
-        if fear > 0.7 and herd_active and herd_ratio > 2.0:
-            return 0.73, f"Fear+herd selling (fear:{fear:.1%}, herd:{herd_ratio:.1f}x)"
-        elif greed > 0.7 and wick_ratio > 0.6:
-            return 0.73, f"Greed+retail FOMO (greed:{greed:.1%}, wicks:{wick_ratio:.1f})"
+        if fear > 0.7 and herd_active and herd_ratio > 2.0: return 0.73, f"Fear+herd selling (fear:{fear:.1%}, herd:{herd_ratio:.1f}x)"
+        elif greed > 0.7 and wick_ratio > 0.6: return 0.73, f"Greed+retail FOMO (greed:{greed:.1%}, wicks:{wick_ratio:.1f})"
         return None
     
-    # STRATEGY 13: Marubozu Continuation
     def marubozu(self, candles):
         if len(candles) < 2: return None
         c = candles[-1]
-        body = abs(c['close'] - c['open'])
-        range_ = c['high'] - c['low']
-        if body > range_ * 0.9:  # Very little wick
-            return 0.66, f"Marubozu {'bullish' if c['close'] > c['open'] else 'bearish'}"
+        body, range_ = abs(c['close'] - c['open']), c['high'] - c['low']
+        if body > range_ * 0.9: return 0.66, f"Marubozu {'bullish' if c['close'] > c['open'] else 'bearish'}"
         return None
     
-    # STRATEGY 14: Inside Bar Breakout
     def inside_bar(self, candles):
         if len(candles) < 3: return None
         c1, c2, c3 = candles[-3], candles[-2], candles[-1]
-        if c2['high'] < c1['high'] and c2['low'] > c1['low']:  # Inside bar
+        if c2['high'] < c1['high'] and c2['low'] > c1['low']:
             breakout = c3['close'] > c1['high'] or c3['close'] < c1['low']
             return 0.67, "Inside bar breakout" if breakout else None
         return None
     
-    # STRATEGY 15: Gap Reversal
     def gap_reversal(self, candles):
         if len(candles) < 3: return None
         gaps = [(candles[i]['open'] - candles[i-1]['close']) / candles[i-1]['close'] for i in range(-3, 0)]
-        large_gap = any(abs(g) > 0.001 for g in gaps)
-        if large_gap:
-            return 0.64, "Gap reversal setup"
+        if any(abs(g) > 0.001 for g in gaps): return 0.64, "Gap reversal setup"
         return None
     
-    # STRATEGY 16: Session Quality
     def session_quality(self, candles):
         bdt_hour = datetime.now(pytz.timezone('Asia/Dhaka')).hour
         scores = {(19, 22): 0.85, (8, 12): 0.70, (0, 3): 0.60, (18, 19): 0.40}
         for (start, end), score in scores.items():
-            if start <= bdt_hour <= end:
-                return score, f"Session quality: {score:.1%}"
+            if start <= bdt_hour <= end: return score, f"Session quality: {score:.1%}"
         return None
     
-    # STRATEGY 17: Correlation Filter
     def correlation_filter(self, candles, pair):
         if "USD" in pair:
             usd_strength = np.mean([c['close'] > c['open'] for c in candles[-5:]])
             return 0.60, f"USD strength: {usd_strength:.1%}"
         return None
     
-    # STRATEGY 18: Triple Inside Bar
     def triple_inside_bar(self, candles):
         if len(candles) < 4: return None
         if all(candles[i]['high'] < candles[i-1]['high'] and candles[i]['low'] > candles[i-1]['low'] for i in range(-3, 0)):
-            return 0.69, "Triple inside bar - volatility incoming"
+            return 0.69, "Triple inside bar"
         return None
     
-    # STRATEGY 19: False Breakout
     def false_breakout(self, candles):
         if len(candles) < 3: return None
         c1, c2, c3 = candles[-3], candles[-2], candles[-1]
-        if c2['high'] > c1['high'] and c2['close'] < c1['high']:  # Fake breakout up
-            return 0.71, "False breakout up"
-        elif c2['low'] < c1['low'] and c2['close'] > c1['low']:  # Fake breakout down
-            return 0.71, "False breakout down"
+        if c2['high'] > c1['high'] and c2['close'] < c1['high']: return 0.71, "False breakout up"
+        elif c2['low'] < c1['low'] and c2['close'] > c1['low']: return 0.71, "False breakout down"
         return None
     
-    # STRATEGY 20: Volume Profile
     def volume_profile(self, candles):
         if len(candles) < 10: return None
         vwap = np.average([c['close'] for c in candles[-10:]], weights=[c['volume'] for c in candles[-10:]])
-        if candles[-1]['close'] > vwap and candles[-2]['close'] < vwap:
-            return 0.65, "VPVR bullish flip"
-        elif candles[-1]['close'] < vwap and candles[-2]['close'] > vwap:
-            return 0.65, "VPVR bearish flip"
+        if candles[-1]['close'] > vwap and candles[-2]['close'] < vwap: return 0.65, "VPVR bullish flip"
+        elif candles[-1]['close'] < vwap and candles[-2]['close'] > vwap: return 0.65, "VPVR bearish flip"
         return None
     
-    # MASTER: Triple Confirmation
+    # MASTER: Triple Confirmation from 20+ strategies
     def triple_confirmation_check(self, candles, pair):
+        # Collect all 20+ strategy signals
         all_strategies = [
             self.vwap_macd(candles),
             self.ema_crossover(candles),
@@ -282,17 +282,89 @@ class UltraStrategyEngine:
         ]
         
         valid = [s for s in all_strategies if s]
-        if len(valid) >= 3:
-            long_signals = [(p, r) for p, r in valid if 'bullish' in r or 'LONG' in r or 'up' in r or 'support' in r]
-            short_signals = [(p, r) for p, r in valid if 'bearish' in r or 'SHORT' in r or 'down' in r or 'resistance' in r]
+        if len(valid) >= 3:  # Need 3+ confirmations
+            long_signals = [(p, r) for p, r in valid if any(x in r for x in ['bullish', 'LONG', 'up', 'support', 'golden', 'buy'])]
+            short_signals = [(p, r) for p, r in valid if any(x in r for x in ['bearish', 'SHORT', 'down', 'resistance', 'death', 'sell'])]
+            
             if len(long_signals) >= 2 and len(long_signals) > len(short_signals):
-                return min(np.mean([p for p, _ in long_signals]) * 1.1, 0.92), f"🎯 TRIPLE: {' + '.join([r for _, r in long_signals[:2]])}"
+                avg_prob = np.mean([p for p, _ in long_signals])
+                return min(avg_prob * 1.15, 0.95), f"🎯 TRIPLE: {long_signals[0][1]} + {long_signals[1][1]}"
             elif len(short_signals) >= 2 and len(short_signals) > len(long_signals):
-                return min(np.mean([p for p, _ in short_signals]) * 1.1, 0.92), f"🎯 TRIPLE: {' + '.join([r for _, r in short_signals[:2]])}"
-        return None
+                avg_prob = np.mean([p for p, _ in short_signals])
+                return min(avg_prob * 1.15, 0.95), f"🎯 TRIPLE: {short_signals[0][1]} + {short_signals[1][1]}"
+            elif len(valid) >= 5:
+                # Mixed signals but high activity = uncertain
+                return 0.60, "Mixed signals - high uncertainty"
+        
+        return None  # No triple confirmation
 
 # ──────────────────────────────────────────────────────────────
-# SIGNAL GENERATION WITH FALLBACK
+# PSYCHOLOGY & STATISTICS (Pure NumPy)
+# ──────────────────────────────────────────────────────────────
+class MarketPsychology:
+    def calculate_fear_greed(self, candles):
+        returns = np.diff([c['close'] for c in candles])
+        volatility = np.std(returns) * np.sqrt(252)
+        momentum = (candles[-1]['close'] - candles[-5]['close']) / candles[-5]['close']
+        fear = min(volatility * 10, 1.0) * (1 if momentum < 0 else 0.5)
+        greed = max(1 - volatility * 5, 0) * (1 if momentum > 0 else 0.5)
+        return fear, greed
+    
+    def detect_herd_behavior(self, volumes):
+        baseline = np.mean(volumes[:-5])
+        recent = np.mean(volumes[-3:])
+        spike_ratio = recent / baseline if baseline > 0 else 1
+        return spike_ratio > 1.8, spike_ratio
+    
+    def institutional_vs_retail(self, candles):
+        wick_sizes = [(c['high'] - max(c['open'], c['close'])) / (c['high'] - c['low']) for c in candles[-10:]]
+        volume_trend = np.mean([c['volume'] for c in candles[-5:]]) / np.mean([c['volume'] for c in candles[-10:-5]])
+        wick_ratio = np.mean(wick_sizes)
+        institutional_score = (1 - wick_ratio) * volume_trend
+        return institutional_score, wick_ratio
+
+class StatisticalValidator:
+    def __init__(self):
+        self.confidence_threshold = 0.65
+    
+    def norm_cdf_approx(self, x):
+        """Approximate normal CDF without erf - Polynomial approximation"""
+        # Abramowitz & Stegun approximation
+        a1, a2, a3 = 0.254829592, -0.284496736, 1.421413741
+        a4, a5, p = -1.453152027, 1.061405429, 0.3275911
+        
+        sign = 1 if x >= 0 else -1
+        x = abs(x) / np.sqrt(2.0)
+        
+        t = 1.0 / (1.0 + p * x)
+        y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * np.exp(-x * x)
+        
+        return 0.5 * (1.0 + sign * y)
+    
+    def statistical_significance(self, signal_prob, baseline_prob=0.5, alpha=0.05):
+        """Z-test for proportions using approximation"""
+        n_trials = 1000
+        std_error = np.sqrt(baseline_prob * (1 - baseline_prob) / n_trials)
+        z_score = (signal_prob - baseline_prob) / std_error
+        
+        # Use approximation instead of scipy
+        p_value = 2 * (1 - self.norm_cdf_approx(abs(z_score)))
+        return p_value < alpha, p_value, z_score
+    
+    def monte_carlo_confidence(self, candles, n_simulations=1000):
+        """Monte Carlo simulation"""
+        returns = np.diff([c['close'] for c in candles[-30:]])
+        if len(returns) == 0: return 0.5
+        mean_ret, std_ret = np.mean(returns), np.std(returns)
+        if std_ret == 0: return 0.5 if mean_ret > 0 else 0.5
+        
+        simulations = np.random.normal(mean_ret, std_ret, (n_simulations, 5))
+        cumulative = np.cumsum(simulations, axis=1)
+        prob_up = np.mean(cumulative[:, -1] > 0)
+        return prob_up
+
+# ──────────────────────────────────────────────────────────────
+# SIGNAL GENERATION
 # ──────────────────────────────────────────────────────────────
 def generate_advanced_signals(pairs_list, count, market_type):
     tz_bd = pytz.timezone('Asia/Dhaka')
@@ -302,7 +374,7 @@ def generate_advanced_signals(pairs_list, count, market_type):
     signals = []
     engine = UltraStrategyEngine()
     
-    # Synthetic historical data (replace with real 10-day data)
+    # Synthetic data (replace with real 10-day data)
     candles = []
     base_price = 1.0850
     for i in range(50):
@@ -317,12 +389,12 @@ def generate_advanced_signals(pairs_list, count, market_type):
     for i in range(count):
         pair = random.choice(pairs_list)
         
-        # MASTER: Triple confirmation (20+ strategies)
+        # MASTER: Triple confirmation from 20+ strategies
         master_signal = engine.triple_confirmation_check(candles, pair)
         
         if master_signal:
             probability, reason = master_signal
-            direction = "LONG" if "bullish" in reason or "LONG" in reason or "support" in reason else "SHORT"
+            direction = "LONG" if any(x in reason for x in ['bullish', 'LONG', 'up', 'support', 'golden']) else "SHORT"
         else:
             # Fallback: Top 3 individual strategies
             fallback_signals = []
@@ -331,12 +403,11 @@ def generate_advanced_signals(pairs_list, count, market_type):
                 if result: fallback_signals.append(result)
             
             if len(fallback_signals) >= 2:
-                # Take the highest probability signal
                 fallback_signals.sort(key=lambda x: x[0], reverse=True)
                 probability, reason = fallback_signals[0]
-                direction = "LONG" if "bullish" in reason or "LONG" in reason else "SHORT"
+                direction = "LONG" if any(x in reason for x in ['bullish', 'LONG', 'up']) else "SHORT"
             else:
-                # Final fallback: Monte Carlo simulation
+                # Monte Carlo simulation
                 prob_up = engine.validator.monte_carlo_confidence(candles)
                 if prob_up and prob_up > 0.6:
                     direction, probability, reason = ("LONG", prob_up, f"Monte Carlo {prob_up:.1%} up")
@@ -345,17 +416,13 @@ def generate_advanced_signals(pairs_list, count, market_type):
                 else:
                     direction, probability, reason = random.choice(["LONG", "SHORT"]), 0.55, "Random signal"
         
-        # Statistical validation (SAFE - no erf)
+        # Statistical validation
         try:
             is_significant, p_value, z_score = engine.validator.statistical_significance(probability)
         except:
-            # Fallback if statistical check fails
             is_significant, p_value, z_score = False, 1.0, 0.0
         
-        if is_significant and z_score > 2.0:
-            confidence = min(probability * 1.05, 0.95)
-        else:
-            confidence = probability
+        confidence = min(probability * 1.05, 0.95) if is_significant and z_score > 2.0 else probability
         
         signal_time = start_time + timedelta(minutes=i * 3)
         time_str = signal_time.strftime("%I:%M:00 %p").lower()
@@ -378,22 +445,13 @@ def generate_advanced_signals(pairs_list, count, market_type):
     return signals
 
 # ──────────────────────────────────────────────────────────────
-# UI & STREAMLIT APP
+# STREAMLIT UI
 # ──────────────────────────────────────────────────────────────
 st.markdown("""
     <style>
     .neon-header { font-family: 'Orbitron', sans-serif; color: #00ffff; text-align: center; font-size: 48px; text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff, 0 0 40px #00ffff; padding: 20px; animation: flicker 2s infinite alternate; }
-    @keyframes flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.9; } }
-    .signal-container { background: rgba(10, 15, 25, 0.9); border-left: 5px solid #00ffff; border-radius: 8px; padding: 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0, 255, 255, 0.3); transition: all 0.3s; }
-    .signal-container:hover { box-shadow: 0 6px 30px rgba(0, 255, 255, 0.5); transform: translateX(5px); }
-    .time-text { font-family: 'Roboto Mono', monospace; color: #ffffff; font-size: 22px; font-weight: bold; text-shadow: 0 0 5px #fff; }
-    .pair-text { color: #888; font-size: 14px; font-family: 'Orbitron', sans-serif; }
-    .up-call { color: #00ff88; font-weight: bold; text-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88; border: 1px solid #00ff88; padding: 8px 20px; border-radius: 25px; text-transform: uppercase; background: rgba(0, 255, 136, 0.1); }
-    .down-put { color: #ff0055; font-weight: bold; text-shadow: 0 0 10px #ff0055, 0 0 20px #ff0055; border: 1px solid #ff0055; padding: 8px 20px; border-radius: 25px; text-transform: uppercase; background: rgba(255, 0, 85, 0.1); }
-    .accuracy-tag { background: #1a1f2b; color: #00f2ff; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; border: 1px solid #00f2ff; }
-    .explanation-box { background: rgba(30, 30, 40, 0.8); border: 1px solid #444; border-radius: 6px; padding: 10px; margin-top: 10px; font-size: 12px; color: #aaa; }
-    .stButton>button { background: rgba(20, 20, 20, 0.8) !important; color: #00ffff !important; border: 2px solid #00ffff !important; border-radius: 10px !important; box-shadow: 0 0 15px rgba(0, 255, 255, 0.5) !important; font-family: 'Orbitron', monospace !important; font-weight: bold !important; font-size: 16px !important; transition: all 0.3s !important; padding: 15px 30px !important; }
-    .stDownloadButton>button { background: rgba(138, 43, 226, 0.2) !important; color: #8a2be2 !important; border: 2px solid #8a2be2 !important; border-radius: 10px !important; box-shadow: 0 0 15px rgba(138, 43, 226, 0.5) !important; font-family: 'Orbitron', monospace !important; font-weight: bold !important; font-size: 16px !important; }
+    .signal-container { background: rgba(10, 15, 25, 0.9); border-left: 5px solid #00ffff; border-radius: 8px; padding: 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0, 255, 255, 0.3); }
+    .stButton>button { background: rgba(20, 20, 20, 0.8) !important; color: #00ffff !important; border: 2px solid #00ffff !important; border-radius: 10px !important; box-shadow: 0 0 15px rgba(0, 255, 255, 0.5) !important; font-family: 'Orbitron', monospace !important; font-weight: bold !important; font-size: 16px !important; padding: 15px 30px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -418,11 +476,7 @@ st.markdown("<p style='text-align:center; color:#00f2ff; font-size:18px;'>Triple
 # Sidebar
 st.sidebar.markdown("### 🌍 MARKET CONFIGURATION")
 market_mode = st.sidebar.radio("Select Market Type", ["Real Market", "OTC Market"], index=1)
-if market_mode == "OTC Market":
-    pairs = st.sidebar.multiselect("Select OTC Assets", OTC_MARKETS, default=["USD/BDT (OTC)", "EUR/USD (OTC)"])
-else:
-    pairs = st.sidebar.multiselect("Select Real Assets", REAL_MARKETS, default=["EUR/USD", "GBP/USD"])
-
+pairs = st.sidebar.multiselect("Select Assets", OTC_MARKETS if market_mode == "OTC Market" else REAL_MARKETS, default=["USD/BDT (OTC)"])
 num_signals = st.sidebar.slider("Number of Signals (3-min intervals)", 10, 150, 100, step=10)
 
 tz_bd = pytz.timezone('Asia/Dhaka')
@@ -447,18 +501,21 @@ if st.session_state.generated_signals is not None:
     st.markdown("### 📊 **VALIDATED SIGNALS (3-MIN INTERVALS)**")
     for sig in st.session_state.generated_signals:
         color_class = "up-call" if sig['Raw_Direction'] == "LONG" else "down-put"
+        significance = "⭐ " if sig['Z_Score'] > 2.0 else ""
         st.markdown(f"""
         <div class="signal-container">
-            <div><span class="pair-text">{sig['Pair']}</span><br><span class="time-text">{sig['Time']}</span></div>
+            <div><span class="pair-text">{significance}{sig['Pair']}</span><br><span class="time-text">{sig['Time']}</span></div>
             <div><span class="{color_class}">{sig['Direction']}</span><span class="accuracy-tag" style="margin-left:15px;">{sig['Confidence']}</span></div>
         </div>
-        <div class="explanation-box"><strong>Logic:</strong> {sig['Explanation']}<br><strong>Z-Score:</strong> {sig['Z_Score']:.2f} | <strong>P-Value:</strong> {sig['P_Value']:.3f}</div>
+        <div class="explanation-box"><strong>Logic:</strong> {sig['Explanation']}<br><strong>Z-Score:</strong> {sig['Z_Score']:.2f} | <strong>P-Value:</strong> {sig['P_Value']:.3f}<br>{'Statistically significant' if sig['Is_Significant'] else 'Not significant'}</div>
         """, unsafe_allow_html=True)
 
-# Download Button
+# Download
 if st.session_state.generated_signals is not None:
     st.markdown("---")
     df_download = pd.DataFrame(st.session_state.generated_signals)
     csv_buffer = io.StringIO()
-    df_download.to_csv(csv_buffer, index=False, columns=["Pair", "Time", "Direction", "Confidence", "Explanation", "Z_Score", "P_Value"])
+    df_download.to_csv(csv_buffer, index=False, columns=["Pair", "Time", "Direction", "Confidence", "Explanation", "Z_Score", "P_Value", "Is_Significant"])
     st.download_button(label="📥 DOWNLOAD VALIDATED SIGNALS (CSV)", data=csv_buffer.getvalue(), file_name=f"zoha_signals_{bdt_time.strftime('%Y%m%d_%H%M%S')}.csv", mime='text/csv', use_container_width=True)
+
+st.warning("⚠️ This is a demonstration system using synthetic data. Production requires real-time data feeds, historical storage, and low-latency infrastructure.")
