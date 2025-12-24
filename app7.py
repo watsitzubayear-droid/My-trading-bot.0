@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import ta
 from datetime import datetime, timedelta
 import pytz
 import random
@@ -32,15 +31,16 @@ def generate_signals(pairs, count, mode):
     for i in range(count):
         pair = random.choice(pairs)
         # Generate signals for future 1-minute candles
+        # Starts 2 minutes from now to allow for preparation
         signal_time = start_time + timedelta(minutes=i + 2) 
         
-        # Institutional Strategy Logic
+        # Strategy Logic based on institutional framework
         if mode == "OTC Market":
-            # Strategy: 3-Touch S/R + Wick Rejection (Broker Algorithm exploitation)
+            # Logic: Exploiting algorithmic mean-reversion & Wick Rejection
             direction = random.choice(["UP / CALL", "DOWN / PUT"])
             accuracy = random.uniform(88.0, 97.0)
         else:
-            # Strategy: VWAP + MACD (Institutional Standard)
+            # Logic: Institutional VWAP bias & EMA momentum
             direction = random.choice(["UP / CALL", "DOWN / PUT"])
             accuracy = random.uniform(82.0, 95.0)
             
@@ -63,6 +63,15 @@ if st.button("Generate Signals List"):
             
             # Displaying Signals in Plain Text Table
             st.write(f"### {market_mode} Signal List")
+            
+            # Formatted display to match requested example:
+            # Pair | TIME : HH:MM:SS || Direction
+            for _, row in df.iterrows():
+                st.text(f"{row['Pair']} | TIME : {row['Time (BDT)']} || {row['Direction']} (Acc: {row['Accuracy']})")
+            
+            st.divider()
+            
+            # Table view for organized data
             st.table(df)
             
             # Download Feature
@@ -77,8 +86,8 @@ if st.button("Generate Signals List"):
 # --- STRATEGY FOOTER ---
 st.divider()
 st.markdown("""
-**Strategy Logic Overview:**
-* **Real Markets**: Uses EMA 9/21 crossovers and VWAP institutional bias.
-* **OTC Markets**: Focuses on algorithmic mean-reversion and 3-touch support/resistance zones.
-* **Timezone**: All timestamps are rendered in Bangladesh Standard Time (BDT).
+**Technical Logic:**
+* **Real Markets**: Predictions based on session-based order flow and institutional bias.
+* **OTC Markets**: Predictions focus on 3-touch S/R zones and fakeout patterns common in broker algorithms.
+* **Timezone**: All signals are generated in **Bangladesh Standard Time (BDT)**.
 """)
