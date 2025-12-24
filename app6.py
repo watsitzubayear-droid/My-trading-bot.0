@@ -226,10 +226,12 @@ class AdvancedQuantumEngine:
             next_end = next_start + datetime.timedelta(minutes=1)
             time_str = f"{next_start.strftime('%H:%M:%S')} - {next_end.strftime('%H:%M:%S')}"
         
+        # FIXED: Added missing 'trade_decision' key
         return {
             "pair": pair,
             "prediction": direction_text,
             "direction": direction,
+            "trade_decision": direction,  # <-- THIS WAS MISSING
             "score": min(max(score, 85), 100),
             "confidence": confidence,
             "time_interval": time_str,
@@ -462,7 +464,7 @@ if "future_signals" not in st.session_state:
 if "scan_mode" not in st.session_state:
     st.session_state.scan_mode = None
 if "direction_filter" not in st.session_state:
-    st.session_state.direction_filter = "Both (UP & DOWN)"
+    st.session_state.direction_filter = "Both (UP & DOWN) - Winner Selection"
 
 # --- ৫. MAIN UI ---
 st.set_page_config(page_title="⚡ ZOHA NEURAL-100 TERMINAL", layout="wide")
@@ -477,8 +479,8 @@ with clock_col2:
 st.markdown("---")  # Separator after clock
 
 # Header
-st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.1</h1>', unsafe_allow_html=True)
-st.write("🧠 DUAL-FORCE SCAN ENGINE | 30 HIGHEST CONFIDENCE TRADES IN 2 HOURS")
+st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v6.2</h1>', unsafe_allow_html=True)
+st.write("🧠 DUAL-FORCE SCAN ENGINE | 30 HIGHEST CONFIDENCE TRADES IN 2 HOURS | FIXED")
 
 # --- ৬. SIDEBAR ---
 with st.sidebar:
@@ -602,7 +604,9 @@ def display_future_predictions():
     cols = st.columns(3)
     for idx, signal in enumerate(sorted_signals):
         with cols[idx % 3]:
-            direction_class = "call-signal" if signal['trade_decision'] == "CALL" else "put-signal"
+            # FIXED: Use get() method with fallback to prevent KeyError
+            trade_decision = signal.get('trade_decision', signal.get('direction', 'CALL'))
+            direction_class = "call-signal" if trade_decision == "CALL" else "put-signal"
             
             # Countdown
             current_time = get_bdt_time()
@@ -816,6 +820,6 @@ st.markdown(clock_script, unsafe_allow_html=True)
 st.divider()
 st.markdown("""
 <div style="text-align:center; color:#8b949e; font-size:12px;">
-    ⚡ ZOHA NEURAL-100 v6.1 | Dual-Force Scan Engine | Top 30 Selection | 120-Minute Coverage
+    ⚡ ZOHA NEURAL-100 v6.2 | Dual-Force Scan Engine | Top 30 Selection | Bug Fixed
 </div>
 """, unsafe_allow_html=True)
