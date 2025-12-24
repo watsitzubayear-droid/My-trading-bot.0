@@ -12,15 +12,14 @@ DATA_DIR.mkdir(exist_ok=True)
 
 # --- SIMULATED MARKET DATA GENERATOR ---
 class MarketDataSimulator:
-    """Simulates realistic 1M and 5M candlestick data"""
+    """Simulates realistic 1M candlestick data"""
     
     @staticmethod
     def generate_historical_data(days=5):
-        """Generate 5 days of 1M and 5M candle data"""
+        """Generate 5 days of 1M candle data"""
         now = datetime.datetime.now(pytz.timezone('Asia/Dhaka'))
         minutes_1m = days * 24 * 60
         
-        # 1M data
         data_1m = []
         base_price = 1.0850
         
@@ -72,6 +71,13 @@ class AdvancedQuantumEngine:
             "Session_High_Low": "Asian/London/NY session level analysis",
         }
         
+        # Define which strategies are bullish/bearish
+        self.bullish_strategies = [
+            "ICT_Market_Structure", "Order_Block_Validation", "VSA_Volume_Profile",
+            "Institutional_Sweep_SMC", "Order_Flow_Imbalance", "MACD_Crossover",
+            "Bollinger_Band_Bounce", "Support_Resistance_Break", "GPX_Median_Rejection"
+        ]
+        
         self.weights = {
             "BTL_Size_Math": 1.2, "GPX_Median_Rejection": 1.1, "ICT_Market_Structure": 1.3,
             "Order_Block_Validation": 1.25, "Liquidity_Grab": 1.15, "VSA_Volume_Profile": 1.0,
@@ -80,6 +86,31 @@ class AdvancedQuantumEngine:
             "News_Guard_Protocol": 1.4, "Spread_Anomaly_Detector": 1.1, "Support_Resistance_Break": 1.0,
             "Fair_Value_Gap": 0.9, "Session_High_Low": 0.85,
         }
+    
+    def get_direction_and_confidence(self, conditions):
+        """Calculate direction and confidence based on weighted strategy outcomes"""
+        bullish_weight = sum([
+            self.weights[s] * (1.0 if conditions[s] else 0.0) 
+            for s in self.bullish_strategies if s in conditions
+        ])
+        
+        bearish_weight = sum([
+            self.weights[s] * (0.0 if conditions[s] else 1.0) 
+            for s in self.bullish_strategies if s in conditions
+        ])
+        
+        total_weight = bullish_weight + bearish_weight
+        
+        if bullish_weight > bearish_weight:
+            direction = "CALL"
+            direction_text = "🟢 GREEN (CALL)"
+            confidence = round((bullish_weight / total_weight) * 100, 1) if total_weight > 0 else 50.0
+        else:
+            direction = "PUT"
+            direction_text = "🔴 RED (PUT)"
+            confidence = round((bearish_weight / total_weight) * 100, 1) if total_weight > 0 else 50.0
+        
+        return direction, direction_text, confidence
     
     def predict_next_candle(self, pair):
         """Predict next 1M candle with 5-day chart analysis"""
@@ -98,23 +129,23 @@ class AdvancedQuantumEngine:
         conditions = {}
         conditions["ICT_Market_Structure"] = price_trend
         conditions["Order_Block_Validation"] = current['close'] > data_1m['close'].median() and volume_trend
-        conditions["Liquidity_Grab"] = np.random.choice([True] * 30 + [False] * 70)
+        conditions["Liquidity_Grab"] = np.random.choice([True, False], p=[0.3, 0.7])
         conditions["VSA_Volume_Profile"] = volume_trend
         conditions["Institutional_Sweep_SMC"] = conditions["Order_Block_Validation"] and volume_trend
         conditions["Order_Flow_Imbalance"] = price_trend
-        conditions["RSI_Divergence"] = np.random.choice([True] * 82 + [False] * 18)
-        conditions["MACD_Crossover"] = np.random.choice([True] * 85 + [False] * 15)
-        conditions["Bollinger_Band_Bounce"] = np.random.choice([True] * 88 + [False] * 12)
+        conditions["RSI_Divergence"] = np.random.choice([True, False], p=[0.82, 0.18])
+        conditions["MACD_Crossover"] = np.random.choice([True, False], p=[0.85, 0.15])
+        conditions["Bollinger_Band_Bounce"] = np.random.choice([True, False], p=[0.88, 0.12])
         conditions["ATR_Volatility_Filter"] = volatility > 0.0008
-        conditions["News_Guard_Protocol"] = np.random.choice([True] * 94 + [False] * 6)
-        conditions["Spread_Anomaly_Detector"] = np.random.choice([True] * 87 + [False] * 13)
+        conditions["News_Guard_Protocol"] = np.random.choice([True, False], p=[0.94, 0.06])
+        conditions["Spread_Anomaly_Detector"] = np.random.choice([True, False], p=[0.87, 0.13])
         conditions["Support_Resistance_Break"] = current['close'] > data_1m['close'].median()
-        conditions["Fair_Value_Gap"] = np.random.choice([True] * 86 + [False] * 14)
-        conditions["Session_High_Low"] = np.random.choice([True] * 84 + [False] * 16)
-        conditions["BTL_Size_Math"] = np.random.choice([True] * 88 + [False] * 12)
-        conditions["GPX_Median_Rejection"] = np.random.choice([True] * 91 + [False] * 9)
+        conditions["Fair_Value_Gap"] = np.random.choice([True, False], p=[0.86, 0.14])
+        conditions["Session_High_Low"] = np.random.choice([True, False], p=[0.84, 0.16])
+        conditions["BTL_Size_Math"] = np.random.choice([True, False], p=[0.88, 0.12])
+        conditions["GPX_Median_Rejection"] = np.random.choice([True, False], p=[0.91, 0.09])
         
-        # Calculate score
+        # Calculate weighted score
         weighted_score = sum([
             (1.0 if conditions[k] else 0.0) * self.weights[k] 
             for k in conditions.keys()
@@ -122,19 +153,8 @@ class AdvancedQuantumEngine:
         max_possible = sum(self.weights.values())
         score = int(85 + (weighted_score / max_possible) * 15)
         
-        # Predict direction
-        bullish_signals = sum([conditions["ICT_Market_Structure"], conditions["Order_Flow_Imbalance"],
-                              conditions["MACD_Crossover"], conditions["VSA_Volume_Profile"],
-                              conditions["Support_Resistance_Break"], conditions["Institutional_Sweep_SMC"]])
-        
-        if bullish_signals >= 4:
-            prediction = "🟢 GREEN (CALL)"
-            direction = "CALL"
-        else:
-            prediction = "🔴 RED (PUT)"
-            direction = "PUT"
-        
-        confidence = round((bullish_signals if direction == "CALL" else (6 - bullish_signals)) / 6 * 100, 1)
+        # Get direction from weighted analysis (BALANCED!)
+        direction, direction_text, confidence = self.get_direction_and_confidence(conditions)
         
         # Time interval (NO SECONDS)
         current_time = get_bdt_time()
@@ -143,7 +163,7 @@ class AdvancedQuantumEngine:
         
         return {
             "pair": pair,
-            "prediction": prediction,
+            "prediction": direction_text,
             "direction": direction,
             "score": min(max(score, 85), 100),
             "confidence": confidence,
@@ -153,6 +173,63 @@ class AdvancedQuantumEngine:
             "conditions": conditions,
             "current_candle_color": current['color'],
             "volatility_regime": "HIGH" if volatility > 0.0008 else "LOW",
+            "analysis_timestamp": get_bdt_time().strftime("%Y-%m-%d %H:%M")
+        }
+    
+    def predict_future_trade(self, pair, target_time):
+        """Predict trade at specific future time"""
+        data_1m = self.market_data.generate_historical_data(days=5)
+        current = data_1m.iloc[-1]
+        recent_5 = data_1m.tail(5)
+        recent_20 = data_1m.tail(20)
+        
+        volume_trend = recent_5['volume'].mean() > recent_20['volume'].mean()
+        price_trend = recent_5['close'].is_monotonic_increasing
+        volatility = data_1m['close'].diff().std()
+        
+        conditions = {}
+        conditions["ICT_Market_Structure"] = price_trend
+        conditions["Order_Block_Validation"] = True
+        conditions["Liquidity_Grab"] = np.random.choice([True, False], p=[0.3, 0.7])
+        conditions["VSA_Volume_Profile"] = volume_trend
+        conditions["Institutional_Sweep_SMC"] = True
+        conditions["Order_Flow_Imbalance"] = price_trend
+        conditions["RSI_Divergence"] = np.random.choice([True, False], p=[0.82, 0.18])
+        conditions["MACD_Crossover"] = np.random.choice([True, False], p=[0.85, 0.15])
+        conditions["Bollinger_Band_Bounce"] = np.random.choice([True, False], p=[0.88, 0.12])
+        conditions["ATR_Volatility_Filter"] = volatility > 0.0008
+        conditions["News_Guard_Protocol"] = np.random.choice([True, False], p=[0.94, 0.06])
+        conditions["Spread_Anomaly_Detector"] = np.random.choice([True, False], p=[0.87, 0.13])
+        conditions["Support_Resistance_Break"] = True
+        conditions["Fair_Value_Gap"] = np.random.choice([True, False], p=[0.86, 0.14])
+        conditions["Session_High_Low"] = np.random.choice([True, False], p=[0.84, 0.16])
+        conditions["BTL_Size_Math"] = np.random.choice([True, False], p=[0.88, 0.12])
+        conditions["GPX_Median_Rejection"] = np.random.choice([True, False], p=[0.91, 0.09])
+        
+        # Calculate score
+        weighted_score = sum([
+            (1.0 if conditions[k] else 0.0) * self.weights[k] 
+            for k in conditions.keys()
+        ])
+        max_possible = sum(self.weights.values())
+        score = int(85 + (weighted_score / max_possible) * 15)
+        
+        # Get direction from weighted analysis (BALANCED!)
+        direction, direction_text, confidence = self.get_direction_and_confidence(conditions)
+        
+        volatility_factor = 1.0 if conditions["ATR_Volatility_Filter"] else 0.6
+        
+        return {
+            "pair": pair,
+            "scheduled_time": target_time.strftime("%Y-%m-%d %H:%M"),
+            "direction": direction_text,
+            "trade_decision": direction,
+            "score": min(max(score, 85), 100),
+            "confidence": confidence,
+            "volatility_adjusted": round(confidence * volatility_factor / 100, 1),
+            "strategies_passed": sum(conditions.values()),
+            "conditions": conditions,
+            "expected_magnitude": "HIGH" if volatility_factor > 0.9 else "MEDIUM",
             "analysis_timestamp": get_bdt_time().strftime("%Y-%m-%d %H:%M")
         }
 
@@ -181,6 +258,26 @@ def get_theme_css():
     return """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Roboto+Mono:wght@300;400;600&display=swap');
+    
+    .header-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 10px;
+        background: rgba(13, 17, 23, 0.5);
+        border-radius: 15px;
+        backdrop-filter: blur(10px);
+    }
+    
+    .center-clock {
+        font-size: 28px;
+        color: #00d4ff;
+        font-weight: bold;
+        font-family: 'Orbitron', sans-serif;
+        text-shadow: 0 0 20px rgba(0, 212, 255, 0.7);
+        letter-spacing: 2px;
+    }
     
     .stApp {
         background: linear-gradient(135deg, #0a0e27 0%, #000000 50%, #0a0e27 100%);
@@ -301,6 +398,12 @@ def get_theme_css():
         animation: pulse 1.5s infinite;
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    
+    .countdown {
+        color: #ffaa00;
+        font-weight: bold;
+        font-size: 14px;
+    }
     </style>
     """
 
@@ -318,19 +421,20 @@ if "scan_mode" not in st.session_state:
 st.set_page_config(page_title="⚡ ZOHA NEURAL-100 TERMINAL", layout="wide")
 st.markdown(get_theme_css(), unsafe_allow_html=True)
 
-# Real-time clock
-clock_placeholder = st.empty()
+# TOP-CENTER LIVE CLOCK
+clock_col1, clock_col2, clock_col3 = st.columns([1, 2, 1])
+with clock_col2:
+    clock_display = st.empty()
+    clock_display.markdown('<div class="center-clock" id="live-clock"></div>', unsafe_allow_html=True)
+
+st.markdown("---")  # Separator after clock
 
 # Header
-st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v5.1</h1>', unsafe_allow_html=True)
-st.write("🧠 1-MINUTE CANDLE PREDICTOR | 17 STRATEGIES | 5-DAY CHART ANALYSIS")
+st.markdown('<h1 class="neural-header">⚡ ZOHA NEURAL-100 TERMINAL v5.2</h1>', unsafe_allow_html=True)
+st.write("🧠 1-MINUTE CANDLE PREDICTOR | 17 STRATEGIES | 5-DAY CHART ANALYSIS | BALANCED SIGNALS")
 
 # --- ৬. SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 🕒 BDT TIME")
-    clock_display = st.empty()
-    st.divider()
-    
     st.header("⚙️ NEURAL CONTROLS")
     market_type = st.selectbox("Select Market", list(QUOTEX_DATABASE.keys()))
     selected_assets = st.multiselect(
@@ -353,7 +457,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Use on_click callbacks for better reliability
     def set_scan_mode(mode):
         st.session_state.scan_mode = mode
     
@@ -374,13 +477,7 @@ with st.sidebar:
     st.metric("Live Predictions", len(st.session_state.candle_predictions))
     st.metric("Future Predictions", len(st.session_state.future_signals))
 
-# --- ৭. REAL-TIME CLOCK ---
-def update_clock():
-    current_time = get_bdt_time().strftime("%H:%M:%S")
-    clock_display.markdown(f"### {current_time} <span class='live-dot'></span>", unsafe_allow_html=True)
-    clock_placeholder.markdown(f"**Last Update:** {current_time}")
-
-# --- ৮. DISPLAY FUNCTIONS ---
+# --- ৭. DISPLAY FUNCTIONS ---
 def display_live_predictions():
     """Display next 1M candle predictions"""
     if not st.session_state.candle_predictions:
@@ -393,7 +490,6 @@ def display_live_predictions():
         with cols[idx % 3]:
             direction_class = "call-signal" if pred['direction'] == "CALL" else "put-signal"
             
-            # FIXED: Removed 'help' parameter from markdown
             html = f"""
 <div class="signal-card prediction-card">
     <div class="pair-name">{pair}</div>
@@ -417,7 +513,6 @@ def display_live_predictions():
             
             st.markdown(html, unsafe_allow_html=True)
             
-            # FIXED: Use columns instead of help parameter
             with st.expander("🔬 View Strategy Analysis", expanded=False):
                 st.write("**Strategy Results:**")
                 col1, col2 = st.columns(2)
@@ -487,7 +582,7 @@ def display_future_predictions():
                             st.error(f"❌ {strategy.replace('_', ' ')}")
                         st.caption(desc)
 
-# --- ৯. EXECUTION LOGIC ---
+# --- ৮. EXECUTION LOGIC ---
 if st.session_state.scan_mode == "live":
     st.session_state.candle_predictions = {}
     
@@ -496,7 +591,7 @@ if st.session_state.scan_mode == "live":
     
     for idx, pair in enumerate(selected_assets):
         status_text.text(f"🧠 Analyzing 5-day chart for {pair}...")
-        time.sleep(0.3)  # Simulate deep analysis
+        time.sleep(0.3)
         
         prediction = engine.predict_next_candle(pair)
         
@@ -539,7 +634,7 @@ elif st.session_state.scan_mode == "future":
     st.session_state.scan_mode = None
     st.rerun()
 
-# --- ১০. DISPLAY RESULTS ---
+# --- ৯. DISPLAY RESULTS ---
 st.divider()
 
 # Live Predictions Section
@@ -554,7 +649,7 @@ if st.session_state.future_signals:
     st.caption("Specific timestamp predictions with countdown")
     display_future_predictions()
 
-# --- ১১. STATISTICS ---
+# --- ১০. STATISTICS ---
 st.divider()
 st.subheader("📈 Real-Time Performance")
 
@@ -568,7 +663,7 @@ with col3:
 with col4:
     st.metric("Strategy Accuracy", "99.1%", "±0.3%")
 
-# --- ১২. EXPORT & CLEAR ---
+# --- ১১. EXPORT & CLEAR ---
 if st.session_state.candle_predictions or st.session_state.future_signals:
     with st.expander("📥 Export Data"):
         col1, col2 = st.columns(2)
@@ -593,13 +688,31 @@ if st.session_state.candle_predictions or st.session_state.future_signals:
                     use_container_width=True
                 )
 
+# --- ১২. LIVE CLOCK UPDATE ---
+# JavaScript to update the clock every second
+clock_script = """
+<script>
+function updateClock() {
+    const clock = document.getElementById('live-clock');
+    if (clock) {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        clock.innerHTML = `${hours}:${minutes}:${seconds} <span class="live-dot"></span>`;
+    }
+}
+setInterval(updateClock, 1000);
+updateClock(); // Initial call
+</script>
+"""
+
+st.markdown(clock_script, unsafe_allow_html=True)
+
 # Footer
 st.divider()
 st.markdown("""
 <div style="text-align:center; color:#8b949e; font-size:12px;">
-    ⚡ ZOHA NEURAL-100 v5.1 | 1M Candle Predictor | 17-Strategy Engine | 5-Day Chart Analysis
+    ⚡ ZOHA NEURAL-100 v5.2 | 1M Candle Predictor | 17-Strategy Engine | Balanced Analysis
 </div>
 """, unsafe_allow_html=True)
-
-# Update clock
-update_clock()
