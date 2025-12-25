@@ -1,4 +1,5 @@
-streamlit==1.29.0
-pandas==2.1.4
-numpy==1.24.3
-pytz==2023.3
+pandas==2.2.0
+numpy==1.26.3
+pytz==2023.3.post1
+pandas-ta==0.3.14b0
+scikit-learn==1.4.0
