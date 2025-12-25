@@ -279,10 +279,18 @@ class UltraStrategyEngine:
             self.volume_profile(candles)
         ]
         
-        valid = [s for s in all_strategies if s]
+        # FIX: Filter out None values and ensure valid tuples
+        valid = []
+        for s in all_strategies:
+            if s is not None and isinstance(s, tuple) and len(s) == 2:
+                prob, reason = s
+                if prob is not None and reason is not None and isinstance(reason, str):
+                    valid.append((prob, reason))
+        
         if len(valid) >= 3:  # Need 3+ confirmations
-            long_signals = [(p, r) for p, r in valid if any(x in r for x in ['bullish', 'LONG', 'up', 'support', 'golden', 'buy'])]
-            short_signals = [(p, r) for p, r in valid if any(x in r for x in ['bearish', 'SHORT', 'down', 'resistance', 'death', 'sell'])]
+            # FIX: Add null checks for reason string
+            long_signals = [(p, r) for p, r in valid if r and any(x in r for x in ['bullish', 'LONG', 'up', 'support', 'golden', 'buy'])]
+            short_signals = [(p, r) for p, r in valid if r and any(x in r for x in ['bearish', 'SHORT', 'down', 'resistance', 'death', 'sell'])]
             
             if len(long_signals) >= 2 and len(long_signals) > len(short_signals):
                 avg_prob = np.mean([p for p, _ in long_signals])
