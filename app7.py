@@ -10,7 +10,8 @@ import io
 # ⚠️ ALL HELPERS DEFINED FIRST (Before any class usage)
 # ──────────────────────────────────────────────────────────────
 def calculate_ema(prices, period):
-    """True EMA calculation - FIXED: Now at top of file"""
+    """True EMA calculation - FIXED: Handles empty lists"""
+    if not prices: return None  # FIX: Prevent IndexError
     if len(prices) < period: return prices[-1]
     alpha = 2 / (period + 1)
     ema = prices[0]
@@ -19,7 +20,7 @@ def calculate_ema(prices, period):
     return ema
 
 def calculate_rsi(prices, period=7):
-    """True RSI with Wilder's smoothing - FIXED: Now at top"""
+    """True RSI with Wilder's smoothing"""
     if len(prices) < period + 1: return 50
     deltas = np.diff(prices)
     gains = np.where(deltas > 0, deltas, 0)
@@ -34,7 +35,7 @@ def calculate_rsi(prices, period=7):
     return 100 - (100 / (1 + rs))
 
 def detect_3_touch_zones(candles, window=20):
-    """Detect 3-touch S/R zones - FIXED: Now at top"""
+    """Detect 3-touch S/R zones"""
     if len(candles) < window: return []
     highs = [c['high'] for c in candles[-window:]]
     lows = [c['low'] for c in candles[-window:]]
@@ -78,17 +79,15 @@ REAL_MARKETS = [
 ]
 
 # ──────────────────────────────────────────────────────────────
-# 20+ STRATEGY ENGINE (Now can use calculate_ema)
+# 20+ STRATEGY ENGINE
 # ──────────────────────────────────────────────────────────────
 class UltraStrategyEngine:
     def __init__(self):
         self.zones = {}
         self.session_cache = {}
-        # Initialize validator for statistical methods
         self.validator = StatisticalValidator()
     
-    # STRATEGIES 1-20 (All using calculate_ema safely now)
-    def vwap_macd(self, candles):  # ... implementation ...
+    def vwap_macd(self, candles):
         if len(candles) < 26: return None
         typical_prices = [(c['high'] + c['low'] + c['close']) / 3 for c in candles[-20:]]
         volumes = [c['volume'] for c in candles[-20:]]
@@ -151,7 +150,10 @@ class UltraStrategyEngine:
             wick_top = c['high'] - max(c['open'], c['close'])
             wick_bottom = min(c['open'], c['close']) - c['low']
             if body < (c['high'] - c['low']) * 0.1 and (wick_top > body*2 or wick_bottom > body*2):
-                ema8 = calculate_ema([c['close'] for c in candles[-8+i:i+1]], 8)
+                price_list = [c['close'] for c in candles[-8+i:i+1]]
+                if len(price_list) < 8: continue  # FIX: Prevent IndexError
+                ema8 = calculate_ema(price_list, 8)
+                if ema8 is None: continue  # FIX: Handle None return
                 if c['close'] > ema8 and wick_bottom > wick_top: return 0.73, f"Doji bottom reversal (candle {i})"
                 elif c['close'] < ema8 and wick_top > wick_bottom: return 0.73, f"Doji top reversal (candle {i})"
         return None
@@ -211,7 +213,8 @@ class UltraStrategyEngine:
         c1, c2, c3 = candles[-3], candles[-2], candles[-1]
         if c2['high'] < c1['high'] and c2['low'] > c1['low']:
             breakout = c3['close'] > c1['high'] or c3['close'] < c1['low']
-            return 0.67, "Inside bar breakout" if breakout else None
+            # FIX: Return None instead of (0.67, None)
+            return (0.67, "Inside bar breakout") if breakout else None
         return None
     
     def gap_reversal(self, candles):
@@ -255,7 +258,6 @@ class UltraStrategyEngine:
     
     # MASTER: Triple Confirmation from 20+ strategies
     def triple_confirmation_check(self, candles, pair):
-        # Collect all 20+ strategy signals
         all_strategies = [
             self.vwap_macd(candles),
             self.ema_crossover(candles),
@@ -268,7 +270,6 @@ class UltraStrategyEngine:
             self.time_of_day(candles),
             self.volatility_regime(candles),
             self.spread_filter(candles),
-            # REMOVED: self.psychology_overlay(candles),
             self.marubozu(candles),
             self.inside_bar(candles),
             self.gap_reversal(candles),
@@ -279,7 +280,7 @@ class UltraStrategyEngine:
             self.volume_profile(candles)
         ]
         
-        # FIX: Filter out None values and ensure valid tuples
+        # Filter valid signals
         valid = []
         for s in all_strategies:
             if s is not None and isinstance(s, tuple) and len(s) == 2:
@@ -287,8 +288,7 @@ class UltraStrategyEngine:
                 if prob is not None and reason is not None and isinstance(reason, str):
                     valid.append((prob, reason))
         
-        if len(valid) >= 3:  # Need 3+ confirmations
-            # FIX: Add null checks for reason string
+        if len(valid) >= 3:
             long_signals = [(p, r) for p, r in valid if r and any(x in r for x in ['bullish', 'LONG', 'up', 'support', 'golden', 'buy'])]
             short_signals = [(p, r) for p, r in valid if r and any(x in r for x in ['bearish', 'SHORT', 'down', 'resistance', 'death', 'sell'])]
             
@@ -299,25 +299,19 @@ class UltraStrategyEngine:
                 avg_prob = np.mean([p for p, _ in short_signals])
                 return min(avg_prob * 1.15, 0.95), f"🎯 TRIPLE: {short_signals[0][1]} + {short_signals[1][1]}"
             elif len(valid) >= 5:
-                # Mixed signals but high activity = uncertain
                 return 0.60, "Mixed signals - high uncertainty"
         
-        return None  # No triple confirmation
+        return None
 
 # ──────────────────────────────────────────────────────────────
-# PSYCHOLOGY & STATISTICS (Pure NumPy)
+# STATISTICAL VALIDATOR (Pure NumPy)
 # ──────────────────────────────────────────────────────────────
-class MarketPsychology:
-    """REMOVED: No longer used by main engine"""
-    pass
-
 class StatisticalValidator:
     def __init__(self):
         self.confidence_threshold = 0.65
     
     def norm_cdf_approx(self, x):
-        """Approximate normal CDF without erf - Polynomial approximation"""
-        # Abramowitz & Stegun approximation
+        """Approximate normal CDF without erf"""
         a1, a2, a3 = 0.254829592, -0.284496736, 1.421413741
         a4, a5, p = -1.453152027, 1.061405429, 0.3275911
         
@@ -335,7 +329,6 @@ class StatisticalValidator:
         std_error = np.sqrt(baseline_prob * (1 - baseline_prob) / n_trials)
         z_score = (signal_prob - baseline_prob) / std_error
         
-        # Use approximation instead of scipy
         p_value = 2 * (1 - self.norm_cdf_approx(abs(z_score)))
         return p_value < alpha, p_value, z_score
     
@@ -362,7 +355,7 @@ def generate_advanced_signals(pairs_list, count, market_type):
     signals = []
     engine = UltraStrategyEngine()
     
-    # Synthetic data (replace with real 10-day data)
+    # Synthetic data
     candles = []
     base_price = 1.0850
     for i in range(50):
@@ -376,15 +369,12 @@ def generate_advanced_signals(pairs_list, count, market_type):
     
     for i in range(count):
         pair = random.choice(pairs_list)
-        
-        # MASTER: Triple confirmation from 20+ strategies
         master_signal = engine.triple_confirmation_check(candles, pair)
         
         if master_signal:
             probability, reason = master_signal
             direction = "LONG" if any(x in reason for x in ['bullish', 'LONG', 'up', 'support', 'golden', 'buy']) else "SHORT"
         else:
-            # Fallback: Top 3 individual strategies
             fallback_signals = []
             for strat in [engine.vwap_macd, engine.ema_crossover, engine.three_touch_zones, engine.rsi_bb_reversion, engine.volume_delta]:
                 result = strat(candles) if strat != engine.three_touch_zones else strat(candles, pair)
@@ -395,7 +385,6 @@ def generate_advanced_signals(pairs_list, count, market_type):
                 probability, reason = fallback_signals[0]
                 direction = "LONG" if any(x in reason for x in ['bullish', 'LONG', 'up']) else "SHORT"
             else:
-                # Monte Carlo simulation
                 prob_up = engine.validator.monte_carlo_confidence(candles)
                 if prob_up and prob_up > 0.6:
                     direction, probability, reason = ("LONG", prob_up, f"Monte Carlo {prob_up:.1%} up")
@@ -404,7 +393,6 @@ def generate_advanced_signals(pairs_list, count, market_type):
                 else:
                     direction, probability, reason = random.choice(["LONG", "SHORT"]), 0.55, "Random signal"
         
-        # Statistical validation
         try:
             is_significant, p_value, z_score = engine.validator.statistical_significance(probability)
         except:
